@@ -397,7 +397,7 @@
     (:action move_up_from
         :parameters (?b - block) 
         :precondition(at ?b)
-        :effect(and (increase (costs) 1)
+        :effect( and (increase (costs) 1)
         	    (not (at ?b))
         	    (when (= ?b b2_1) (at b1_1))
         	    (when (= ?b b2_2) (at b1_2))
