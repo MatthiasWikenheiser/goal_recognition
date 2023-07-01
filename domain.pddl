@@ -398,7 +398,7 @@
         :parameters (?b - block) 
         :precondition(at ?b)
         :effect( and (increase (costs) 1)
-        	    (not (at ?b))
+        	    (not (at ?b)) ;example comment
         	    (when (= ?b b2_1) (at b1_1))
         	    (when (= ?b b2_2) (at b1_2))
         	    (when (= ?b b2_3) (at b1_3))
