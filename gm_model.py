@@ -58,7 +58,7 @@ class gm_model:
             key_word = "or"
         if key_word in ["and", "or"]:
             is_true_list = []
-            split_list = self._split_recursive_and_or(parse_string, zipped_parameters, key_word)
+            split_list = self._split_recursive_and_or(parse_string, key_word)
             if inside_when:
                 for split_element in split_list:
                     is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)
@@ -152,6 +152,9 @@ class gm_model:
                         parse = False
                     idx -= 1
                 return True, [parse_string] + effects
+    def _call_effect_check(self, parse_string,zipped_parameters):
+        _, effects = self._recursive_effect_check(parse_string, zipped_parameters)
+        return [effect for effect in effects if effect != "_"]
     def _create_obs_goal(self, goal_idx = 0, step = 1):
         goal = self.goal_list[0][goal_idx]
         new_goal = f"(define (problem {goal.name})\n"
@@ -212,9 +215,6 @@ class gm_model:
         else:
             return [action_effects]
 
-
-
-
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
@@ -226,6 +226,21 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
+    action_test_computer = """(and (increase (costs) 1 )
+            	    (when(and (= ?w food-milk) (= ?h contaminated-with-pathogens)
+            	    	      (or  (= ?r sick-member-drank-it) 
+            	    	           (= ?r sick-member-ate-it) 
+            	    	           (= ?r it-often-carries-disease) 
+            	    	           (= ?r it-looks-dirty))) 
+            	      (achieved_goal_6)
+            	    )
+            	    (decrease (tests-remaining) 1) 
+            	    (wearable_tested ?w ?r ?h) 
+            )"""
+    zipped_parameters_action_test_computer = [('food-milk', '?w'), ("contaminated-with-pathogens", "?h"),
+                                              ("it-looks-dirty", "?r")]
+    print(action_test_computer)
+    print(model._call_effect_check(action_test_computer, zipped_parameters_action_test_computer))
     #print(model._create_obs_goal())
     #print(obs_toy_example.obs_action_sequence)
-    print(model._get_effects_from_obs_action_sequence())
+    #print(model._get_effects_from_obs_action_sequence())
