@@ -350,3 +350,4 @@ class pddl_observations:
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
+    print(toy_example_domain.action_dict["MOVE_LEFT_FROM"].action_parameters[0].parameter)

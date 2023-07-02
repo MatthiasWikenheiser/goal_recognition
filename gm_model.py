@@ -21,36 +21,35 @@ class gm_model:
         self.prob_nrmlsd_dict_list = []
         self.steps_optimal = metric_ff_solver(planner = self.planner)
         self.mp_seconds = None
-    def _split_recursive_and_or(string, zipped_parameters, key_word):
+    def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
-        strt_idx = string.find(key_word) + len(key_word)
-        new_string = string[strt_idx:]
+        strt_idx = parse_string.find(key_word) + len(key_word)
+        new_string = parse_string[strt_idx:]
         strt_idx += new_string.find("(")
-        end_idx = len(string) - 1
+        end_idx = len(parse_string) - 1
         parse_back = True
         while end_idx > 0 and parse_back:
-            if string[end_idx] == ")":
-                string = string[:end_idx]
+            if parse_string[end_idx] == ")":
+                parse_string = parse_string[:end_idx]
                 parse_back = False
-            end_idx -= -1
+            end_idx -= 1
         c = strt_idx + 1
         parse_bracket = 1
-        while c < len(string):
-            if string[c] == "(":
+        while c < len(parse_string):
+            if parse_string[c] == "(":
                 parse_bracket += 1
-            if string[c] == ")":
+            if parse_string[c] == ")":
                 parse_bracket -= 1
             if parse_bracket == 0:
-                split_list.append(string[strt_idx:c + 1])
-                strt_idx = c + string[c:].find("(")
+                split_list.append(parse_string[strt_idx:c + 1])
+                strt_idx = c + parse_string[c:].find("(")
                 c = strt_idx + 1
                 parse_bracket = 1
             c += 1
         return split_list
-    def recursive_effect_check(self, string, zipped_parameters, key_word=None):
-        print("------------")
-        print(string)
-        string_cleaned_blanks = string.replace("\t", "").replace(" ", "").replace("\n", "")
+    def _recursive_effect_check(self, parse_string, zipped_parameters, inside_when=False, key_word=None):
+        effects = []
+        string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n", "")
         if string_cleaned_blanks.startswith("(when"):
             key_word = "when"
         elif string_cleaned_blanks.startswith("(and"):
@@ -58,15 +57,31 @@ class gm_model:
         elif string_cleaned_blanks.startswith("(or"):
             key_word = "or"
         if key_word in ["and", "or"]:
-            c = len(string) - 1
-            parse = True
-            while c > 0 and parse:
-                if string[c] == ")":
-                    new_string = string[string.find(key_word) + len(key_word):c]
-                    parse = False
-                c -= -1
-        elif key_word == "when":
-            new_string = string[string.find("when"):]
+            is_true_list = []
+            split_list = self._split_recursive_and_or(parse_string, zipped_parameters, key_word)
+            if inside_when:
+                for split_element in split_list:
+                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)
+                    is_true_list.append(is_true)
+                    [effects.append(e) for e in effect if e not in effects]
+                if key_word == "and":
+                    if all(is_true_list):
+                        return True, effects
+                    else:
+                        return False, "_"
+                elif key_word == "or":
+                    if any(is_true_list):
+                        return True, effects
+                    else:
+                        return False, "_"
+            else:
+                for split_element in split_list:
+                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)
+                    if is_true:
+                        [effects.append(e) for e in effect if e not in effects]
+                return True, effects
+        if key_word == "when":
+            new_string = parse_string[parse_string.find("when"):]
             new_string = new_string[new_string.find("("):]
             parse_bracket = 1
             c = 1
@@ -77,15 +92,66 @@ class gm_model:
                 if new_string[c] == ")":
                     parse_bracket -= 1
                 if parse_bracket == 0:
+                    consequence = new_string[c + 1:]
+                    cons_idx = 0
+                    parse_con = True
+                    while cons_idx < len(consequence) and parse_con:
+                        if consequence[cons_idx] == "(":
+                            consequence = consequence[cons_idx:]
+                            parse_con = False
+                        cons_idx += 1
+                    cons_idx = len(consequence) - 1
+                    parse_con = True
+                    while cons_idx > 0 and parse_con:
+                        if consequence[cons_idx] == ")":
+                            consequence = consequence[:cons_idx]
+                            parse_con = False
+                        cons_idx -= 1
                     new_string = new_string[:c + 1]
                     parse = False
                 c += 1
+            is_true, effect = self._recursive_effect_check(new_string, zipped_parameters, inside_when=True)
+            if is_true:
+                [effects.append(e) for e in effect if e not in effects]
+                is_true, effect = self._recursive_effect_check(consequence, zipped_parameters)
+                [effects.append(e) for e in effect if e not in effects]
+                return True, effects
+            else:
+                return False, "_"
         if key_word is None:
-            return string
-        else:
-            self.recursive_effect_check(new_string, zipped_parameters, key_word)
-
-
+            if "?" in parse_string and "=" in parse_string:
+                parse_str_split = parse_string.split(" ")
+                var = parse_str_split[1].replace(" ", "")
+                obj = parse_str_split[2].replace(" ", "").replace(")", "")
+                tuple_param = [zip_param for zip_param in zipped_parameters if zip_param[1] == var][0]
+                if tuple_param[0] == obj and tuple_param[1] == var:
+                    return True, "_"
+                else:
+                    return False, "_"
+            elif "?" in parse_string and len([op for op in ["=", ">", "<"] if op in parse_string]) == 0:
+                parse_str_split = parse_string.split(" ")
+                var_s = [var.replace(" ", "").replace("\t", "").replace("\n", "").replace("(", "").replace(")", "")
+                         for var in parse_str_split if "?" in var]
+                for var in var_s:
+                    tuple_param = [zip_param for zip_param in zipped_parameters if zip_param[1] == var][0]
+                    parse_string = parse_string.replace(var, tuple_param[0])
+                return True, [parse_string] + effects
+            else:
+                idx = 0
+                parse = True
+                while idx < len(parse_string) and parse:
+                    if parse_string[idx] == "(":
+                        parse_string = parse_string[idx:]
+                        parse = False
+                    idx += 1
+                idx = len(parse_string) - 1
+                parse = True
+                while idx > 0 and parse:
+                    if parse_string[idx] == ")":
+                        parse_string = parse_string[:idx + 1]
+                        parse = False
+                    idx -= 1
+                return True, [parse_string] + effects
     def _create_obs_goal(self, goal_idx = 0, step = 1):
         goal = self.goal_list[0][goal_idx]
         new_goal = f"(define (problem {goal.name})\n"
