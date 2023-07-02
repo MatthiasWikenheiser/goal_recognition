@@ -178,42 +178,23 @@ class gm_model:
     def _get_effects_from_obs_action_sequence(self, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]
         action_title = action_step.split(" ")[0]
+        goals = self.goal_list[step-1]
         if len(action_step.split(" ")) > 1:
             action_objects = action_step.split(" ")[1:]
         else:
             action_objects = []
+        action_objects = [obj.lower() for  obj in action_objects]
         domain = self.domain_list[0]
         pddl_action = domain.action_dict[action_title]
         action_effects = pddl_action.action_effects
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
-        print(zipped_parameters)
-        if action_effects.replace(" ", "").replace("\n", "").replace("\t", "").startswith("and"):
-            effect_elements = []
-            print("begin parse")
-            print(action_effects)
-            idx_strt = action_effects.find("(")
-            parse_bracket = 0
-            c = 0
-            parse_string = action_effects[idx_strt:]
-            idx_strt = 0
-            print(parse_string[idx_strt:])
-
-            while c < len(parse_string):
-                if parse_string[c] == "(":
-                    parse_bracket += 1
-                if parse_string[c] == ")":
-                    parse_bracket -= 1
-                if parse_bracket == 0:
-                    effect_elements.append(parse_string[idx_strt:c+1])
-                    #print(parse_string[idx_strt:c+1])
-                    idx_strt = c + parse_string[c:].find("(")
-                    c = idx_strt - 1
-                c += 1
-            return(effect_elements)
-
-        else:
-            return [action_effects]
+        effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
+        print(effects)
+        print(goals)
+        print(domain.functions)
+        for goal in goals[:1]:
+            print(goal.start_fluents)
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -226,21 +207,5 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    action_test_computer = """(and (increase (costs) 1 )
-            	    (when(and (= ?w food-milk) (= ?h contaminated-with-pathogens)
-            	    	      (or  (= ?r sick-member-drank-it) 
-            	    	           (= ?r sick-member-ate-it) 
-            	    	           (= ?r it-often-carries-disease) 
-            	    	           (= ?r it-looks-dirty))) 
-            	      (achieved_goal_6)
-            	    )
-            	    (decrease (tests-remaining) 1) 
-            	    (wearable_tested ?w ?r ?h) 
-            )"""
-    zipped_parameters_action_test_computer = [('food-milk', '?w'), ("contaminated-with-pathogens", "?h"),
-                                              ("it-looks-dirty", "?r")]
-    print(action_test_computer)
-    print(model._call_effect_check(action_test_computer, zipped_parameters_action_test_computer))
-    #print(model._create_obs_goal())
-    #print(obs_toy_example.obs_action_sequence)
-    #print(model._get_effects_from_obs_action_sequence())
+    print(obs_toy_example.obs_action_sequence)
+    print(model._get_effects_from_obs_action_sequence())

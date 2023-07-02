@@ -124,7 +124,7 @@ class pddl_domain:
             c = 0
             while parse:
                 if string_effects[c]== "(":
-                    string_effects = string_effects[c+1:]
+                    string_effects = string_effects[c:]
                     parse = False
                 c = c+1
             parse = True
@@ -138,7 +138,7 @@ class pddl_domain:
             c = -1
             while parse:
                 if string_effects[c]== ")":
-                    string_effects = string_effects[:c]
+                    string_effects = string_effects[:c+1]
                     parse = False
                 c = c-1
             #check if any precondition exists
@@ -211,7 +211,24 @@ class pddl_domain:
     def _get_functions(self):
         idx_strt = self.domain.find("(:functions")
         idx_end = idx_strt + self.domain[idx_strt:].find("(:",1)
-        return self.domain[idx_strt:idx_end].replace("\n", "")
+        parse_string = self.domain[idx_strt:idx_end].replace("\n", "").replace("\t", "").replace(" ", "")
+        parse_string = parse_string[11:]
+        parse = True
+        idx = len(parse_string) - 1
+        while idx > 0 and parse:
+            if parse_string[idx] == ")":
+                parse_string = parse_string[:idx]
+                parse = False
+            idx -= 1
+        functions = []
+        idx = 0
+        while idx < len(parse_string):
+            if parse_string[idx] == "(":
+                bracket_start = idx
+            if parse_string[idx] == ")":
+                functions.append(parse_string[bracket_start:idx+1])
+            idx += 1
+        return functions
     def _get_actions(self):
         parsed_domain = re.split(" |\n",self.domain)
         actions = []
@@ -237,7 +254,6 @@ class pddl_domain:
         for i in range(len(actions_name)):
             dict_actions[actions_name[i]] = actions[i]
         return dict_actions
-
 class pddl_problem:
     """PDDL Problem data structure read from a .pddl-problem file"""
     def __init__(self, problem_path):
