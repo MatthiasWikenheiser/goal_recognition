@@ -190,7 +190,6 @@ class gm_model:
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
         functions = [function[1:-1] for function in domain.functions]
-        print(goal.start_fluents)
         new_start_fluents = goal.start_fluents
         for effect in effects:
             effect_is_func = len([function for function in functions if function in effect]) > 0
