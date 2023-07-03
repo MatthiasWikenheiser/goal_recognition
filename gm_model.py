@@ -1,6 +1,6 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
-
+import re
 class gm_model:
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
@@ -175,10 +175,10 @@ class gm_model:
         new_goal = new_goal +"\n(:metric minimize (costs))\n)"
         """
         return new_goal
-    def _get_effects_from_obs_action_sequence(self, step = 1):
+    def _create_new_start_fluents(self, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]
         action_title = action_step.split(" ")[0]
-        goals = self.goal_list[step-1]
+        goal = self.goal_list[step-1][0] #start fluents remain equal for all files
         if len(action_step.split(" ")) > 1:
             action_objects = action_step.split(" ")[1:]
         else:
@@ -190,11 +190,28 @@ class gm_model:
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
-        print(effects)
-        print(goals)
-        print(domain.functions)
-        for goal in goals[:1]:
-            print(goal.start_fluents)
+        functions = [function[1:-1] for function in domain.functions]
+        print(goal.start_fluents)
+        new_start_fluents = goal.start_fluents
+        for effect in effects:
+            print(effect)
+            effect_is_func = len([function for function in functions if function in effect]) > 0
+            if effect_is_func:
+                identified_func = [function for function in functions if function in effect][0]
+                idx_func_start_fluents = [i for i in range(len(new_start_fluents)) if identified_func in new_start_fluents[i]][0]
+                replace_func = new_start_fluents[idx_func_start_fluents]
+                curr_number = re.findall(r'\d+', replace_func)[0]
+                effect_change_number = re.findall(r'\d+', effect)[0]
+                if "increase" in effect:
+                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,
+                                                                                     str(float(curr_number) +
+                                                                                     float(effect_change_number)))
+                elif "decrease" in effect:
+                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,
+                                                                                     str(float(curr_number) -
+                                                                                     float(effect_change_number)))
+            #continue with fluents that are not funcs
+            print(new_start_fluents)
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -207,5 +224,4 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    print(obs_toy_example.obs_action_sequence)
-    print(model._get_effects_from_obs_action_sequence())
+    print(model._create_new_start_fluents())
