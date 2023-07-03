@@ -186,7 +186,6 @@ class gm_model:
         action_objects = [obj.lower() for  obj in action_objects]
         domain = self.domain_list[0]
         pddl_action = domain.action_dict[action_title]
-        action_effects = pddl_action.action_effects
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
@@ -194,36 +193,39 @@ class gm_model:
         print(goal.start_fluents)
         new_start_fluents = goal.start_fluents
         for effect in effects:
-            print(effect)
             effect_is_func = len([function for function in functions if function in effect]) > 0
             if effect_is_func:
                 identified_func = [function for function in functions if function in effect][0]
-                idx_func_start_fluents = [i for i in range(len(new_start_fluents)) if identified_func in new_start_fluents[i]][0]
+                idx_func_start_fluents = [i for i in range(len(new_start_fluents )) if identified_func in new_start_fluents[i]][0]
                 replace_func = new_start_fluents[idx_func_start_fluents]
                 curr_number = re.findall(r'\d+', replace_func)[0]
                 effect_change_number = re.findall(r'\d+', effect)[0]
                 if "increase" in effect:
-                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,
-                                                                                     str(float(curr_number) +
-                                                                                     float(effect_change_number)))
+                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,str(float(curr_number) +
+                                                                                float(effect_change_number)))
                 elif "decrease" in effect:
-                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,
-                                                                                     str(float(curr_number) -
-                                                                                     float(effect_change_number)))
+                    new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,str(float(curr_number) -
+                                                                              float(effect_change_number)))
             else:
-                print("before ", effect)
                 effect = self._clean_effect(effect)
-                print("after ", effect)
-
-
-            #continue with fluents that are not funcs
-            print(new_start_fluents)
+                if "(not(" in effect:
+                    opposite = re.findall("\([\s*\w*\s*]*\)", effect)[0]
+                else:
+                    opposite = "(not" + effect + ")"
+                remember_index = -1
+                for i in range(len(new_start_fluents)):
+                    if opposite == self._clean_effect(new_start_fluents[i]):
+                        remember_index = i
+                if remember_index != -1:
+                    new_start_fluents[remember_index] = effect
+                else:
+                    new_start_fluents.append(effect)
+        return [fl for fl in new_start_fluents if "(not(" not in fl]
     def _clean_effect(self, effect):
         left_bracket_clean = re.sub("\s*\(\s*", "(", effect)
         right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
         inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
         return inner_whitespace_clean
-
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
