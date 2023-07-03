@@ -210,8 +210,20 @@ class gm_model:
                     new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,
                                                                                      str(float(curr_number) -
                                                                                      float(effect_change_number)))
+            else:
+                print("before ", effect)
+                effect = self._clean_effect(effect)
+                print("after ", effect)
+
+
             #continue with fluents that are not funcs
             print(new_start_fluents)
+    def _clean_effect(self, effect):
+        left_bracket_clean = re.sub("\s*\(\s*", "(", effect)
+        right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
+        inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
+        return inner_whitespace_clean
+
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -225,3 +237,7 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model._create_new_start_fluents())
+
+
+
+
