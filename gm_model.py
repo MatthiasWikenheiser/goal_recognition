@@ -161,19 +161,18 @@ class gm_model:
         new_goal = new_goal + f"(:domain {self.domain_list[0].name})"
         new_goal = new_goal + "\n(:objects)"
         new_goal = new_goal + "\n(:init "
-        for start_fluent in goal.start_fluents:
+        start_fluents = self._create_new_start_fluents(step)
+        for start_fluent in start_fluents:
             new_goal = new_goal + "\n" + start_fluent
         new_goal = new_goal + "\n)"
-        """
-        new_goal = new_goal + "\n(:goal (and "
-        for goal_fluent in goal.goal_fluents:
-            new_goal = new_goal + "\n" + goal_fluent
-        #new_goal = new_goal + f"\n(obs_precondition_{step}))\n)"
-        for i in range(step):
-            new_goal = new_goal + f"\n(obs_precondition_{i+1})"
-        new_goal = new_goal + ")\n)"
+        if len(goal.goal_fluents) > 1:
+            new_goal = new_goal + "\n(:goal (and "
+            for goal_fluent in goal.goal_fluents:
+                new_goal = new_goal + "\n" + goal_fluent
+            new_goal = new_goal + ")\n)"
+        else:
+            new_goal = new_goal + "\n(:goal" + goal.goal_fluents[0] + ")"
         new_goal = new_goal +"\n(:metric minimize (costs))\n)"
-        """
         return new_goal
     def _create_new_start_fluents(self, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]
@@ -237,7 +236,7 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    print(model._create_new_start_fluents())
+    print(model._create_obs_goal())
 
 
 
