@@ -1,6 +1,9 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
 import re
+import os
+import shutil
+import time
 class gm_model:
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
@@ -12,7 +15,7 @@ class gm_model:
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
-        self.domain_list = [domain_root]
+        self.domain_root = domain_root
         self.goal_list = [goal_list]
         self.planner = planner
         self.observation = obs_action_sequence
@@ -158,10 +161,10 @@ class gm_model:
     def _create_obs_goal(self, goal_idx = 0, step = 1):
         goal = self.goal_list[0][goal_idx]
         new_goal = f"(define (problem {goal.name})\n"
-        new_goal = new_goal + f"(:domain {self.domain_list[0].name})"
+        new_goal = new_goal + f"(:domain {self.domain_root.name})"
         new_goal = new_goal + "\n(:objects)"
         new_goal = new_goal + "\n(:init "
-        start_fluents = self._create_new_start_fluents(step)
+        start_fluents = self._create_new_start_fluents(goal_idx, step)
         for start_fluent in start_fluents:
             new_goal = new_goal + "\n" + start_fluent
         new_goal = new_goal + "\n)"
@@ -171,19 +174,19 @@ class gm_model:
                 new_goal = new_goal + "\n" + goal_fluent
             new_goal = new_goal + ")\n)"
         else:
-            new_goal = new_goal + "\n(:goal" + goal.goal_fluents[0] + ")"
+            new_goal = new_goal + "\n(:goal " + goal.goal_fluents[0] + ")"
         new_goal = new_goal +"\n(:metric minimize (costs))\n)"
         return new_goal
-    def _create_new_start_fluents(self, step = 1):
+    def _create_new_start_fluents(self, goal_idx, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]
         action_title = action_step.split(" ")[0]
-        goal = self.goal_list[step-1][0] #start fluents remain equal for all files
+        goal = self.goal_list[step-1][goal_idx]
         if len(action_step.split(" ")) > 1:
             action_objects = action_step.split(" ")[1:]
         else:
             action_objects = []
         action_objects = [obj.lower() for  obj in action_objects]
-        domain = self.domain_list[0]
+        domain = self.domain_temp
         pddl_action = domain.action_dict[action_title]
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
@@ -196,8 +199,8 @@ class gm_model:
                 identified_func = [function for function in functions if function in effect][0]
                 idx_func_start_fluents = [i for i in range(len(new_start_fluents )) if identified_func in new_start_fluents[i]][0]
                 replace_func = new_start_fluents[idx_func_start_fluents]
-                curr_number = re.findall(r'\d+', replace_func)[0]
-                effect_change_number = re.findall(r'\d+', effect)[0]
+                curr_number = re.findall(r'\d+\.*\d*', replace_func)[0]
+                effect_change_number = re.findall(r'\d+\.*\d*', effect)[0]
                 if "increase" in effect:
                     new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,str(float(curr_number) +
                                                                                 float(effect_change_number)))
@@ -224,6 +227,40 @@ class gm_model:
         right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
         inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
         return inner_whitespace_clean
+    def _add_step(self, step= 1):
+        path = self.domain_root.domain_path.replace(self.domain_root.domain_path.split("/")[-1],"") + "temp"
+        if not os.path.exists(path):
+            os.mkdir(path)
+        if step == 1:
+            domain_string = self.domain_root.domain
+            with open(path + "/domain_gm_model.pddl", "w") as new_domain:
+               new_domain.write(domain_string)
+            self.domain_temp = pddl_domain(path + "/domain_gm_model.pddl")
+        new_goal_list = []
+        for goal in range(len(self.goal_list[0])):
+            goal_string = self._create_obs_goal(goal, step)
+            with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
+                new_goal.write(goal_string)
+            new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
+        self.goal_list.append(new_goal_list)
+        if step == 1:
+            shutil.copy(f'{self.planner}', path + f'/{self.planner}')
+    def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
+        """
+        RUN before perform_solve_observed.
+        Solves the optimal plan for each goal in goal_list.
+        :param multiprocess: if True, all problems (goals) are solved in parallel
+        :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*) is
+         considered
+        :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
+        :param timeout: after specified timeout is reached, all process are getting killed.
+        """
+        start_time = time.time()
+        self.steps_optimal.solve(self.domain_root, self.goal_list[0], multiprocess=multiprocess,
+                                 type_solver=type_solver, weight=weight, timeout=timeout)
+        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
+        if multiprocess:
+            self.mp_seconds = round(time.time() - start_time, 2)
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -236,8 +273,8 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    print(model._create_obs_goal())
-
-
-
-
+    #print(model._create_obs_goal())
+    print(toy_example_domain.domain_path)
+    model.perform_solve_optimal()
+    print(model.steps_optimal.plan)
+    print(model.steps_optimal.plan_cost)
