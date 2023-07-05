@@ -207,6 +207,8 @@ class gm_model:
                 elif "decrease" in effect:
                     new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,str(float(curr_number) -
                                                                               float(effect_change_number)))
+                if identified_func == goal.metric_min_func:
+                    self.cost_obs_cum = re.findall(r'\d+\.*\d*', new_start_fluents[idx_func_start_fluents])[0]
             else:
                 effect = self._clean_effect(effect)
                 if "(not(" in effect:
@@ -294,6 +296,9 @@ class gm_model:
             task = metric_ff_solver(planner = self.planner)
             task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
             self.steps_observed.append(task)
+            #print(self.cost_obs_cum)
+
+
             #self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
             #self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
         #print("total time-elapsed: ", round(time.time() - start_time,2), "s")
@@ -320,6 +325,7 @@ if __name__ == '__main__':
         print("step ", i+1)
         print(model.steps_observed[i].plan)
         print(model.steps_observed[i].plan_cost)
+
 
 
 
