@@ -263,6 +263,13 @@ class pddl_problem:
         self.name = self._get_name_problem()
         self.start_fluents = self._get_start_fluents()
         self.goal_fluents = self._get_goal_fluents()
+        self.metric_min_func = self._get_metric_min_func()
+    def _get_metric_min_func(self):
+        metric_min_str = re.findall("\(:\s*metric\s+minimize\s+\(\s*\w+\s*\)\s*\)", self.problem)[0]
+        min_func = re.findall("\(\s*\w+\s*\)", metric_min_str)[0]
+        min_func = re.findall("\w+" , min_func)[0]
+        return min_func
+
     def _problem_path(self, problem_path):
         if len(problem_path.split("/")) == 1:
             return os.getcwd() + "/" + problem_path
@@ -367,3 +374,5 @@ class pddl_observations:
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     print(toy_example_domain.action_dict["MOVE_LEFT_FROM"].action_parameters[0].parameter)
+    problem_a = pddl_problem('problem_A.pddl')
+    print(problem_a.metric_min_func)

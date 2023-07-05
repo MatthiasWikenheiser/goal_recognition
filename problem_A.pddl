@@ -11,5 +11,5 @@
 
     (:goal (at b5_1))   
     
-    (:metric minimize (costs))
+    (:metric minimize (costs ) )
 )
