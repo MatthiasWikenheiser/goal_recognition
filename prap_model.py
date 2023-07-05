@@ -104,7 +104,7 @@ class prap_model:
         for i in range(step):
             new_goal = new_goal + f"\n(obs_precondition_{i+1})"
         new_goal = new_goal + ")\n)"
-        new_goal = new_goal +"\n(:metric minimize (costs))\n)"
+        new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
         return new_goal
     def _add_step(self, step= 1):
         path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"

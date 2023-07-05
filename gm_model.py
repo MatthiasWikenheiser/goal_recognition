@@ -175,7 +175,7 @@ class gm_model:
             new_goal = new_goal + ")\n)"
         else:
             new_goal = new_goal + "\n(:goal " + goal.goal_fluents[0] + ")"
-        new_goal = new_goal +"\n(:metric minimize (costs))\n)"
+        new_goal = new_goal +f"\n(:metric minimize ({goal.metric_min_func}))\n)"
         return new_goal
     def _create_new_start_fluents(self, goal_idx, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]

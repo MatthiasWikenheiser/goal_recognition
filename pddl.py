@@ -269,7 +269,6 @@ class pddl_problem:
         min_func = re.findall("\(\s*\w+\s*\)", metric_min_str)[0]
         min_func = re.findall("\w+" , min_func)[0]
         return min_func
-
     def _problem_path(self, problem_path):
         if len(problem_path.split("/")) == 1:
             return os.getcwd() + "/" + problem_path
