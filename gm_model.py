@@ -4,6 +4,7 @@ import re
 import os
 import shutil
 import time
+import numpy as np
 class gm_model:
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
@@ -208,7 +209,7 @@ class gm_model:
                     new_start_fluents[idx_func_start_fluents] = replace_func.replace(curr_number,str(float(curr_number) -
                                                                               float(effect_change_number)))
                 if identified_func == goal.metric_min_func:
-                    self.cost_obs_cum = re.findall(r'\d+\.*\d*', new_start_fluents[idx_func_start_fluents])[0]
+                    self.cost_obs_cum = float(re.findall(r'\d+\.*\d*', new_start_fluents[idx_func_start_fluents])[0])
             else:
                 effect = self._clean_effect(effect)
                 if "(not(" in effect:
@@ -259,6 +260,35 @@ class gm_model:
                 os.remove(path_domain)
                 os.remove(path + f"/{self.planner}")
                 os.rmdir(path)
+    def _calc_prob(self, step = 1, priors= None):
+        if step == 0:
+            print("step must be > 0 ")
+            return None
+        if priors == None:
+            priors = np.array([1/len(self.goal_list[0]) for _ in range(len(self.goal_list[0]))])
+        else:
+            priors = np.array(priors)
+        optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
+        optimal_costs = np.array(optimal_costs)
+        suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
+        suffix_costs = np.array(suffix_costs)
+        p_observed = optimal_costs/(self.cost_obs_cum + suffix_costs)
+        print(p_observed)
+
+
+        #p_observed_costs_likeli = np.exp(-beta * observed_costs)
+        #p_observed = priors * p_observed_costs_likeli
+        #prob = []
+        #prob_dict = {}
+        #for i in range(len(optimal_costs)):
+        #    prob.append(p_observed[i]/(p_observed[i] + p_optimal[i]))
+         #   key = list(self.steps_optimal.plan_cost.keys())[i]
+          #  prob_dict[key] = p_observed[i]/(p_observed[i] + p_optimal[i])
+        #prob_normalised_dict = {}
+        #for i in range(len(prob)):
+         #   key = list(self.steps_optimal.plan_cost.keys())[i]
+          #  prob_normalised_dict[key] = (prob[i]/(sum(prob)))
+        #return prob_dict, prob_normalised_dict
     def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
         """
         RUN before perform_solve_observed.
@@ -275,14 +305,13 @@ class gm_model:
         print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
         if multiprocess:
             self.mp_seconds = round(time.time() - start_time, 2)
-    def perform_solve_observed(self, step = 1, priors = None, beta = 1, multiprocess = True):
+    def perform_solve_observed(self, step = 1, priors = None, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
         from given obs_action_sequence.
         :param step: specifies how many observations in observation sequence get solved
         :param priors: priors of goal_list, default assigns equal probabilites to each goal
-        :param beta: beta in P(O|G) and P(!O|G)
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
 
         UNDER CONSTRUCTION - set timeout to time in obs_action_sequence
@@ -296,9 +325,7 @@ class gm_model:
             task = metric_ff_solver(planner = self.planner)
             task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
             self.steps_observed.append(task)
-            #print(self.cost_obs_cum)
-
-
+            self._calc_prob(i + 1, priors)#[0]
             #self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
             #self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
         #print("total time-elapsed: ", round(time.time() - start_time,2), "s")
