@@ -39,7 +39,10 @@ class prap_model:
         new_domain = new_domain + domain.types + "\n"
         new_domain = new_domain + domain.constants + "\n"
         new_domain = new_domain + self._create_obs_predicates(step) + "\n"
-        new_domain = new_domain + domain.functions + "\n"
+        new_domain = new_domain + "(:functions "
+        for function in domain.functions:
+            new_domain = new_domain + function + "\n"
+        new_domain = new_domain + ")\n"
         for action in domain.action_dict.keys():
             new_domain = new_domain + domain.action_dict[action].action +"\n"
         new_domain = new_domain + self._create_obs_action(step) + "\n)"
@@ -64,19 +67,19 @@ class prap_model:
             new_action = new_action  + f":precondition(and({before_pre})(" + cur_action.action_preconditions + "))"
         cur_pre = f"obs_precondition_{step}"
         #check if parameters exist
-        new_action = new_action + " :effect("
+        new_action = new_action + " :effect"
         idx_and = cur_action.action_effects.find("and")+3
         if len(cur_action.action_parameters) == 0:
-            new_action = new_action + cur_action.action_effects[:idx_and] + f" ({cur_pre}) " + cur_action.action_effects[idx_and:] + "))"
+            new_action = new_action + cur_action.action_effects[:idx_and] + f" ({cur_pre}) " + cur_action.action_effects[idx_and:] + ")"
         elif len(cur_action.action_parameters) == 1:
             new_action = new_action + cur_action.action_effects[:idx_and] + f" (when "
             new_action = new_action  + f"(= {cur_action.action_parameters[0].parameter} {ob[len(ob)-1].split()[0+1]}) "
-            new_action = new_action + f" ({cur_pre})) " + cur_action.action_effects[idx_and:]  + "))"
+            new_action = new_action + f" ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
         elif len(cur_action.action_parameters) > 1:
             new_action = new_action + cur_action.action_effects[:idx_and] + f" (when (and"
             for i in range(len(cur_action.action_parameters)):
                 new_action = new_action + f"(= {cur_action.action_parameters[i].parameter} {ob[len(ob)-1].split()[i+1]}) "
-            new_action = new_action + f") ({cur_pre})) " + cur_action.action_effects[idx_and:]  + "))"
+            new_action = new_action + f") ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
         return new_action
     def _create_obs_predicates(self, step):
         domain = self.domain_list[step-1]
@@ -241,4 +244,9 @@ if __name__ == '__main__':
     model.perform_solve_optimal(multiprocess=True)
     print(model.steps_optimal.plan_cost)
     model.perform_solve_observed(multiprocess=True, step=13)
+    for i in range(13):
+        print("--------")
+        print("step ", i+1)
+        print(model.steps_observed[i].plan)
+        print(model.steps_observed[i].plan_cost)
     #model.plot_prob_goals()

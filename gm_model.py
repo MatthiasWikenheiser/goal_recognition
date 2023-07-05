@@ -245,6 +245,18 @@ class gm_model:
         self.goal_list.append(new_goal_list)
         if step == 1:
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
+    def _remove_step(self, step = 1):
+        path = self.domain_temp.domain_path.replace(self.domain_temp.domain_path.split("/")[-1],"")
+        if os.path.exists(path):
+            path_goal = [x.problem_path for x in self.goal_list[step]]
+            self.goal_list = self.goal_list[0:step]
+            for goal in path_goal:
+                os.remove(goal)
+            if step == 1:
+                path_domain = self.domain_temp.domain_path
+                os.remove(path_domain)
+                os.remove(path + f"/{self.planner}")
+                os.rmdir(path)
     def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
         """
         RUN before perform_solve_observed.
@@ -261,6 +273,32 @@ class gm_model:
         print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
         if multiprocess:
             self.mp_seconds = round(time.time() - start_time, 2)
+    def perform_solve_observed(self, step = 1, priors = None, beta = 1, multiprocess = True):
+        """
+        BEFORE running this, RUN perform_solve_optimal!
+        Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
+        from given obs_action_sequence.
+        :param step: specifies how many observations in observation sequence get solved
+        :param priors: priors of goal_list, default assigns equal probabilites to each goal
+        :param beta: beta in P(O|G) and P(!O|G)
+        :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
+
+        UNDER CONSTRUCTION - set timeout to time in obs_action_sequence
+
+        """
+        start_time = time.time()
+        for i in range(step):
+            step_time = time.time()
+            print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
+            self._add_step(i+1)
+            task = metric_ff_solver(planner = self.planner)
+            task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
+            self.steps_observed.append(task)
+            #self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
+            #self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
+        #print("total time-elapsed: ", round(time.time() - start_time,2), "s")
+        for i in range(step,0,-1):
+            self._remove_step(i)
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -274,7 +312,14 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     #print(model._create_obs_goal())
-    print(toy_example_domain.domain_path)
+    #print(toy_example_domain.domain_path)
     model.perform_solve_optimal()
-    print(model.steps_optimal.plan)
-    print(model.steps_optimal.plan_cost)
+    model.perform_solve_observed(step = 12)
+    for i in range(12):
+        print("--------")
+        print("step ", i+1)
+        print(model.steps_observed[i].plan)
+        print(model.steps_observed[i].plan_cost)
+
+
+
