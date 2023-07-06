@@ -5,6 +5,7 @@ import os
 import shutil
 import time
 import numpy as np
+import matplotlib.pyplot as plt
 class gm_model:
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
@@ -274,21 +275,17 @@ class gm_model:
         suffix_costs = np.array(suffix_costs)
         p_observed = optimal_costs/(self.cost_obs_cum + suffix_costs)
         print(p_observed)
-
-
-        #p_observed_costs_likeli = np.exp(-beta * observed_costs)
-        #p_observed = priors * p_observed_costs_likeli
-        #prob = []
-        #prob_dict = {}
-        #for i in range(len(optimal_costs)):
-        #    prob.append(p_observed[i]/(p_observed[i] + p_optimal[i]))
-         #   key = list(self.steps_optimal.plan_cost.keys())[i]
-          #  prob_dict[key] = p_observed[i]/(p_observed[i] + p_optimal[i])
-        #prob_normalised_dict = {}
-        #for i in range(len(prob)):
-         #   key = list(self.steps_optimal.plan_cost.keys())[i]
-          #  prob_normalised_dict[key] = (prob[i]/(sum(prob)))
-        #return prob_dict, prob_normalised_dict
+        prob_dict = {}
+        sum_probs = 0
+        for i in range(len(p_observed)):
+            key = list(self.steps_optimal.plan_cost.keys())[i]
+            prob_dict[key] = p_observed[i]
+            sum_probs += p_observed[i]
+        prob_normalised_dict = {}
+        for i in range(len(p_observed)):
+            key = list(self.steps_optimal.plan_cost.keys())[i]
+            prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
+        return prob_dict, prob_normalised_dict
     def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
         """
         RUN before perform_solve_observed.
@@ -325,12 +322,35 @@ class gm_model:
             task = metric_ff_solver(planner = self.planner)
             task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
             self.steps_observed.append(task)
-            self._calc_prob(i + 1, priors)#[0]
-            #self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
-            #self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
-        #print("total time-elapsed: ", round(time.time() - start_time,2), "s")
+            self.prob_dict_list.append(self._calc_prob(i + 1, priors)[0])
+            self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors)[1])
+        print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
+    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5):
+        """
+        RUN perform_solve_observed BEFORE.
+        plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
+        :param figsize_x: sets size of x-axis (steps)
+        :param figsize_y: sets size of y-axis (probability)
+        :return:
+        """
+        goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
+        probs_nrmlsd = []
+        for goal in goal_name:
+            #print(self.prob_nrmlsd_dict_list)
+            probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
+        x = [step for step in range(1,len(self.steps_observed)+1)]
+        plt.figure(figsize = (figsize_x,figsize_y))
+        for i in range(len(probs_nrmlsd)):
+            plt.plot(x, probs_nrmlsd[i], label = goal_name[i])
+        plt.legend()
+        plt.xticks(range(1,len(self.steps_observed)+1))
+        plt.yticks([0,0.25,0.5,0.75,1])
+        plt.xlim(1,len(self.steps_observed))
+        plt.ylim(0,1)
+        plt.grid()
+        plt.show()
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -343,8 +363,6 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    #print(model._create_obs_goal())
-    #print(toy_example_domain.domain_path)
     model.perform_solve_optimal()
     model.perform_solve_observed(step = 12)
     for i in range(12):
@@ -352,6 +370,8 @@ if __name__ == '__main__':
         print("step ", i+1)
         print(model.steps_observed[i].plan)
         print(model.steps_observed[i].plan_cost)
+    print(model.prob_dict_list)
+    print(model.prob_nrmlsd_dict_list)
 
 
 
