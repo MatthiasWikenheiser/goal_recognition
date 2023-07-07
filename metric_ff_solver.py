@@ -120,8 +120,6 @@ class metric_ff_solver:
                 self.mp_goal_computed[key] = mp.Value("i", 0)
             #build processes
             self.processes = {}
-            print(self.path)
-            print(os.getcwd())
             if self.path != "":
                 if os.path.basename(os.getcwd()) != os.path.basename(self.path):
                   os.chdir(self.path)

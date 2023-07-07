@@ -26,6 +26,7 @@ class gm_model:
         self.prob_nrmlsd_dict_list = []
         self.steps_optimal = metric_ff_solver(planner = self.planner)
         self.mp_seconds = None
+        self.predicted_step = {}
     def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
         strt_idx = parse_string.find(key_word) + len(key_word)
@@ -271,10 +272,13 @@ class gm_model:
             priors = np.array(priors)
         optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
         optimal_costs = np.array(optimal_costs)
-        suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
-        suffix_costs = np.array(suffix_costs)
-        p_observed = optimal_costs/(self.cost_obs_cum + suffix_costs)
-        print(p_observed)
+        if step != (self.observation.obs_len):
+            suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
+            suffix_costs = np.array(suffix_costs)
+            p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
+        else:
+            p_observed = optimal_costs/self.cost_obs_cum
+        p_observed = np.round(p_observed,4)
         prob_dict = {}
         sum_probs = 0
         for i in range(len(p_observed)):
@@ -285,6 +289,7 @@ class gm_model:
         for i in range(len(p_observed)):
             key = list(self.steps_optimal.plan_cost.keys())[i]
             prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
+            prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
     def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
         """
@@ -302,7 +307,7 @@ class gm_model:
         print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
         if multiprocess:
             self.mp_seconds = round(time.time() - start_time, 2)
-    def perform_solve_observed(self, step = 1, priors = None, multiprocess = True):
+    def perform_solve_observed(self, step = -1, priors = None, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
@@ -315,19 +320,37 @@ class gm_model:
 
         """
         start_time = time.time()
+        if step == -1:
+            step = self.observation.obs_len
         for i in range(step):
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             self._add_step(i+1)
-            task = metric_ff_solver(planner = self.planner)
-            task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
-            self.steps_observed.append(task)
-            self.prob_dict_list.append(self._calc_prob(i + 1, priors)[0])
-            self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors)[1])
+            if i != (self.observation.obs_len-1):
+                task = metric_ff_solver(planner = self.planner)
+                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
+                self.steps_observed.append(task)
+            result_probs = self._calc_prob(i + 1, priors)
+            self.prob_dict_list.append(result_probs[0])
+            self.prob_nrmlsd_dict_list.append(result_probs[1])
+            self.predicted_step[i+1] = self._predict_step(step= i)
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
-    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5):
+    def _predict_step(self, step):
+        dict_proba = self.prob_nrmlsd_dict_list[step]
+        most_likeli = 0
+        key_most_likeli = []
+        for key in list(dict_proba.keys()):
+            if dict_proba[key] > most_likeli:
+                key_most_likeli = [key]
+                most_likeli = dict_proba[key]
+            elif dict_proba[key] == most_likeli:
+                key_most_likeli.append(key)
+                most_likeli = dict_proba[key]
+        return key_most_likeli
+
+    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5, adapt_y_axis = True):
         """
         RUN perform_solve_observed BEFORE.
         plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
@@ -348,7 +371,16 @@ class gm_model:
         plt.xticks(range(1,len(self.steps_observed)+1))
         plt.yticks([0,0.25,0.5,0.75,1])
         plt.xlim(1,len(self.steps_observed))
-        plt.ylim(0,1)
+        if adapt_y_axis:
+            max_prob = 0
+            for step_dict in self.prob_nrmlsd_dict_list:
+                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
+            if max_prob_step > max_prob:
+                max_prob = max_prob_step
+            ticks = np.array([0,0.25,0.5,0.75,1])
+            plt.ylim(np.min(ticks[max_prob > ticks]), np.min(ticks[max_prob < ticks]))
+        else:
+            plt.ylim(0, 1)
         plt.grid()
         plt.show()
 
@@ -364,14 +396,10 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     model.perform_solve_optimal()
-    model.perform_solve_observed(step = 12)
-    for i in range(12):
-        print("--------")
-        print("step ", i+1)
-        print(model.steps_observed[i].plan)
-        print(model.steps_observed[i].plan_cost)
-    print(model.prob_dict_list)
+    model.perform_solve_observed()
+    print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
+
 
 
 

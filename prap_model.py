@@ -32,6 +32,7 @@ class prap_model:
         self.prob_nrmlsd_dict_list = []
         self.steps_optimal = metric_ff_solver(planner = self.planner)
         self.mp_seconds = None
+        self.predicted_step = {}
     def _create_obs_domain(self, step = 1):
         domain = self.domain_list[step-1]
         new_domain = f"(define (domain {domain.name})\n"
@@ -136,12 +137,13 @@ class prap_model:
             if step == 1:
                 os.remove(path + f"/{self.planner}")
                 os.rmdir(path)
-    def perform_solve_observed(self, step = 1, priors = None, beta = 1, multiprocess = True):
+    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
         from given obs_action_sequence.
-        :param step: specifies how many observations in observation sequence get solved
+        :param step: specifies how many observations in observation sequence get solved.
+                     default (-1) results steps = length of observation sequence
         :param priors: priors of goal_list, default assigns equal probabilites to each goal
         :param beta: beta in P(O|G) and P(!O|G)
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
@@ -149,6 +151,8 @@ class prap_model:
         UNDER CONSTRUCTION - set timeout to time in obs_action_sequence
 
         """
+        if step == -1:
+            step =  self.observation.obs_len
         start_time = time.time()
         for i in range(step):
             step_time = time.time()
@@ -159,6 +163,7 @@ class prap_model:
             self.steps_observed.append(task)
             self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
             self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
+            self.predicted_step[i + 1] = self._predict_step(step=i)
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
@@ -200,12 +205,15 @@ class prap_model:
             prob.append(p_observed[i]/(p_observed[i] + p_optimal[i]))
             key = list(self.steps_optimal.plan_cost.keys())[i]
             prob_dict[key] = p_observed[i]/(p_observed[i] + p_optimal[i])
+            prob_dict[key]  = np.round(prob_dict[key], 4)
         prob_normalised_dict = {}
         for i in range(len(prob)):
             key = list(self.steps_optimal.plan_cost.keys())[i]
             prob_normalised_dict[key] = (prob[i]/(sum(prob)))
+            prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5):
+
+    def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         """
         RUN perform_solve_observed BEFORE.
         plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
@@ -216,19 +224,40 @@ class prap_model:
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
         probs_nrmlsd = []
         for goal in goal_name:
-            #print(self.prob_nrmlsd_dict_list)
+            # print(self.prob_nrmlsd_dict_list)
             probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
-        x = [step for step in range(1,len(self.steps_observed)+1)]
-        plt.figure(figsize = (figsize_x,figsize_y))
+        x = [step for step in range(1, len(self.steps_observed) + 1)]
+        plt.figure(figsize=(figsize_x, figsize_y))
         for i in range(len(probs_nrmlsd)):
-            plt.plot(x, probs_nrmlsd[i], label = goal_name[i])
+            plt.plot(x, probs_nrmlsd[i], label=goal_name[i])
         plt.legend()
-        plt.xticks(range(1,len(self.steps_observed)+1))
-        plt.yticks([0,0.25,0.5,0.75,1])
-        plt.xlim(1,len(self.steps_observed))
-        plt.ylim(0,1)
+        plt.xticks(range(1, len(self.steps_observed) + 1))
+        plt.yticks([0, 0.25, 0.5, 0.75, 1])
+        plt.xlim(1, len(self.steps_observed))
+        if adapt_y_axis:
+            max_prob = 0
+            for step_dict in self.prob_nrmlsd_dict_list:
+                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
+            if max_prob_step > max_prob:
+                max_prob = max_prob_step
+            ticks = np.array([0, 0.25, 0.5, 0.75, 1])
+            plt.ylim(np.min(ticks[max_prob > ticks]), np.min(ticks[max_prob < ticks]))
+        else:
+            plt.ylim(0, 1)
         plt.grid()
         plt.show()
+    def _predict_step(self, step):
+        dict_proba = self.prob_nrmlsd_dict_list[step]
+        most_likeli = 0
+        key_most_likeli = []
+        for key in list(dict_proba.keys()):
+            if dict_proba[key] > most_likeli:
+                key_most_likeli = [key]
+                most_likeli = dict_proba[key]
+            elif dict_proba[key] == most_likeli:
+                key_most_likeli.append(key)
+                most_likeli = dict_proba[key]
+        return key_most_likeli
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
@@ -242,11 +271,7 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     model.perform_solve_optimal(multiprocess=True)
-    print(model.steps_optimal.plan_cost)
-    model.perform_solve_observed(multiprocess=True, step=13)
-    for i in range(13):
-        print("--------")
-        print("step ", i+1)
-        print(model.steps_observed[i].plan)
-        print(model.steps_observed[i].plan_cost)
-    #model.plot_prob_goals()
+    model.perform_solve_observed(multiprocess=True)
+    print(model.predicted_step)
+    print(model.prob_nrmlsd_dict_list)
+
