@@ -27,6 +27,7 @@ class gm_model:
         self.steps_optimal = metric_ff_solver(planner = self.planner)
         self.mp_seconds = None
         self.predicted_step = {}
+        self.at_goal = None
     def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
         strt_idx = parse_string.find(key_word) + len(key_word)
@@ -233,6 +234,7 @@ class gm_model:
         inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
         return inner_whitespace_clean
     def _add_step(self, step= 1):
+        last_step = self.observation.obs_len == step
         path = self.domain_root.domain_path.replace(self.domain_root.domain_path.split("/")[-1],"") + "temp"
         if not os.path.exists(path):
             os.mkdir(path)
@@ -243,10 +245,18 @@ class gm_model:
             self.domain_temp = pddl_domain(path + "/domain_gm_model.pddl")
         new_goal_list = []
         for goal in range(len(self.goal_list[0])):
+            add_problem = True
             goal_string = self._create_obs_goal(goal, step)
             with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
                 new_goal.write(goal_string)
-            new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
+            if last_step:
+                check = pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl")
+                if len([f for f in check.goal_fluents if f in check.start_fluents]) == len(check.goal_fluents):
+                    self.at_goal = check
+                    os.remove(check.problem_path)
+                    add_problem = False
+            if add_problem:
+                new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
         self.goal_list.append(new_goal_list)
         if step == 1:
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
@@ -270,14 +280,27 @@ class gm_model:
             priors = np.array([1/len(self.goal_list[0]) for _ in range(len(self.goal_list[0]))])
         else:
             priors = np.array(priors)
-        optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
-        optimal_costs = np.array(optimal_costs)
         if step != (self.observation.obs_len):
+            optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
+            optimal_costs = np.array(optimal_costs)
             suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
             suffix_costs = np.array(suffix_costs)
             p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
         else:
-            p_observed = optimal_costs/self.cost_obs_cum
+            dict_last_step = {}
+            keys_not_at_goal = [key for key in list(self.steps_observed[-1].plan_cost.keys())]
+            optimal_costs = [self.steps_observed[-1].plan_cost[key] for key in keys_not_at_goal]
+            optimal_costs = np.array(optimal_costs)
+            suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
+            suffix_costs = np.array(suffix_costs)
+            p_observed_help = optimal_costs / (self.cost_obs_cum + suffix_costs)
+            for key in range(len(keys_not_at_goal)):
+                dict_last_step[keys_not_at_goal[key]] = p_observed_help[key]
+            dict_last_step[self.at_goal.name] = self.steps_optimal.plan_cost[self.at_goal.name] / self.cost_obs_cum
+            p_observed = []
+            for key in list(self.steps_optimal.plan_cost.keys()):
+                p_observed.append(dict_last_step[key])
+            p_observed = np.array(p_observed)
         p_observed = np.round(p_observed,4)
         prob_dict = {}
         sum_probs = 0
@@ -326,10 +349,9 @@ class gm_model:
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             self._add_step(i+1)
-            if i != (self.observation.obs_len-1):
-                task = metric_ff_solver(planner = self.planner)
-                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
-                self.steps_observed.append(task)
+            task = metric_ff_solver(planner = self.planner)
+            task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
+            self.steps_observed.append(task)
             result_probs = self._calc_prob(i + 1, priors)
             self.prob_dict_list.append(result_probs[0])
             self.prob_nrmlsd_dict_list.append(result_probs[1])
@@ -361,7 +383,6 @@ class gm_model:
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
         probs_nrmlsd = []
         for goal in goal_name:
-            #print(self.prob_nrmlsd_dict_list)
             probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
         x = [step for step in range(1,len(self.steps_observed)+1)]
         plt.figure(figsize = (figsize_x,figsize_y))
@@ -392,13 +413,14 @@ if __name__ == '__main__':
     problem_d = pddl_problem('problem_D.pddl')
     problem_e = pddl_problem('problem_E.pddl')
     problem_f = pddl_problem('problem_F.pddl')
-    toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
+    toy_example_problem_list = [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     model.perform_solve_optimal()
     model.perform_solve_observed()
     print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
+
 
 
 

@@ -123,7 +123,6 @@ class metric_ff_solver:
             if self.path != "":
                 if os.path.basename(os.getcwd()) != os.path.basename(self.path):
                   os.chdir(self.path)
-            print(os.getcwd())
             for i in range(len(self.problem)):
                 key = self.problem[i].name
                 self.processes[key] = Process(target=self._run_metric_ff_mp, args=[self.domain_path,

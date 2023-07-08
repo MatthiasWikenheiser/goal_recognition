@@ -213,7 +213,7 @@ class prap_model:
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
 
-    def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
+    def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=False):
         """
         RUN perform_solve_observed BEFORE.
         plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
@@ -224,7 +224,6 @@ class prap_model:
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
         probs_nrmlsd = []
         for goal in goal_name:
-            # print(self.prob_nrmlsd_dict_list)
             probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
         x = [step for step in range(1, len(self.steps_observed) + 1)]
         plt.figure(figsize=(figsize_x, figsize_y))
