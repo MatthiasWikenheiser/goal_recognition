@@ -280,7 +280,7 @@ class gm_model:
             priors = np.array([1/len(self.goal_list[0]) for _ in range(len(self.goal_list[0]))])
         else:
             priors = np.array(priors)
-        if step != (self.observation.obs_len):
+        if self.at_goal is None:
             optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
             optimal_costs = np.array(optimal_costs)
             suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
