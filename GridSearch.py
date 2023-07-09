@@ -378,6 +378,7 @@ class GridSearch:
                     data.append(random.sample(self.dict_actions[grid_item][1], 1)[0])
                 self.grid_result_not_unique[i].append(data)
                 j += 1
+
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
