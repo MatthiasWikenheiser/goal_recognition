@@ -2,10 +2,10 @@ import pickle
 import pandas as pd
 import numpy as np
 import itertools
-
 import prap_model
 from pddl import *
 from prap_model import *
+from gm_model import *
 import subprocess
 import threading
 import psutil
@@ -30,16 +30,14 @@ def load_gridsearch(file):
 class GridSearch:
     """
     Class that performs a GridSearch to a goal recognition model.
-    At the moment the only model accepted is of type prap_model.
-    Later on there will be at least also goal_mirroring-models included
+    A goal recognition model can be of type prap_model or gm_model.
     """
     def __init__(self, model_root, name, planner = "ff_2_1"):
         """
-        :param model_root: model for goal_recognition (at the moment only prap_model).
+        :param model_root: model for goal_recognition.
         :param name: name for Gridsearch-object, created directories and files contain this name.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1).
         """
-        # self.model_list = [model_root]
         self.model_root = model_root
         self.model_type = type(self.model_root)
         self.model_list = []
@@ -58,8 +56,12 @@ class GridSearch:
         df_action_costs["config"] = [self.name + "_baseline"]
         df_action_costs["optimal_feasible"] = np.nan
         df_action_costs["seconds"] = np.nan
-        for key in self.model_root.domain_list[0].action_dict.keys():
-            df_action_costs[key] = [self.model_root.domain_list[0].action_dict[key].action_cost]
+        if type(self.model_root) == prap_model:
+            domain_root = self.model_root.domain_list[0]
+        elif type(self.model_root) == gm_model:
+            domain_root = self.model_root.domain_root
+        for key in domain_root.action_dict.keys():
+            df_action_costs[key] = [domain_root.action_dict[key].action_cost]
         return df_action_costs
     def add_grid_item(self, grid_tuple):
         """RUN this BEFORE create_grid()
@@ -108,14 +110,17 @@ class GridSearch:
             if size >= max_combs:
                 return "size is equal or larger than maximal combinations"
             else:
-                rgs = self.gs_random_generator(self.grid_item, self.grid, size)
-                f = rgs.create_random_grid()
+                rgs = self._gs_random_generator(self.grid_item, self.grid, size)
+                f = rgs._create_random_grid()
                 f = f.reset_index().iloc[:, 1:]
                 f["config"] = self.name + "_config_" + f.index.astype(str)
                 self.grid = pd.concat([self.grid, f])
                 self.grid = self.grid.reset_index().iloc[:, 1:]
     def _create_domain_config(self, idx):
-        domain = copy(self.model_root.domain_list[0])
+        if type(self.model_root) == prap_model:
+            domain = copy(self.model_root.domain_list[0])
+        elif type(self.model_root) == gm_model:
+            domain = copy(self.model_root.domain_root)
         config_idx = self.grid.iloc[idx, :]
         new_domain = f"(define (domain {domain.name})\n"
         new_domain = new_domain + domain.requirements + "\n"
@@ -125,7 +130,10 @@ class GridSearch:
         for predicate in domain.predicates:
             new_domain = new_domain + " " + predicate
         new_domain = new_domain + ")\n"
-        new_domain = new_domain + domain.functions + "\n"
+        new_domain = new_domain + "(:functions "
+        for function in domain.functions:
+            new_domain = new_domain + function + "\n"
+        new_domain = new_domain + ")\n"
         for action in domain.action_dict.keys():
             new_cost = config_idx[action]
             domain.action_dict[action].set_action_cost(new_cost)
@@ -137,8 +145,11 @@ class GridSearch:
                                           self.goal_list_path, self.model_root.observation, planner = self.planner))
     def _remove_model_domain_config(self, i):
         model_remove = self.model_list[i]
-        fle_remove = model_remove.domain_list[0].domain_path
-        os.remove(fle_remove)
+        if type(self.model_root) == prap_model:
+            file_remove = model_remove.domain_list[0].domain_path
+        elif type(self.model_root) == gm_model:
+            file_remove = model_remove.domain_root.domain_path
+        os.remove(file_remove)
         self.model_list.remove(model_remove)
     def _monitor_temperature_mean(self, celsius_stop, cool_down_time, update_time):
         self.temperature_control = True
@@ -179,7 +190,11 @@ class GridSearch:
         """
         t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
         t.start()
-        domain = copy(self.model_root.domain_list[0])
+        if type(self.model_root) == prap_model:
+            domain_root = self.model_root.domain_list[0]
+        elif type(self.model_root) == gm_model:
+            domain_root = self.model_root.domain_root
+        domain = copy(domain_root)
         path_pcs = domain.domain_path.split("/")
         path = ""
         for path_pc in path_pcs[:-1]:
@@ -206,7 +221,10 @@ class GridSearch:
                         time.sleep(1)
             print("-------------------")
             self._create_domain_config(idx)
-            print(self.model_list[i].domain_list[0].domain_path.split("/")[-1])
+            if type(self.model_root) == prap_model:
+                print(self.model_list[i].domain_list[0].domain_path.split("/")[-1])
+            elif type(self.model_root) == gm_model:
+                print(self.model_list[i].domain_root.domain_path.split("/")[-1])
             # print([self.model_list[i].domain_list[0].action_dict[key].action_cost for key in self.model_list[-1].domain_list[0].action_dict.keys()])
             time.sleep(1)  # remove pending tasks from cpu
             while (max(psutil.cpu_percent(percpu=True)) > 30):
@@ -251,17 +269,22 @@ class GridSearch:
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 self._remove_model_domain_config(i)
-        for action in self.model_root.domain_list[0].action_dict.keys():
-            new_cost = self.grid.iloc[0, :][action]
-            self.model_root.domain_list[0].action_dict[action].set_action_cost(new_cost)
+        if type(self.model_root) == prap_model:
+            for action in self.model_root.domain_list[0].action_dict.keys():
+                new_cost = self.grid.iloc[0, :][action]
+                self.model_root.domain_list[0].action_dict[action].set_action_cost(new_cost)
+        elif type(self.model_root) == gm_model:
+            for action in self.model_root.domain_root.action_dict.keys():
+                new_cost = self.grid.iloc[0, :][action]
+                self.model_root.domain_root.action_dict[action].set_action_cost(new_cost)
         self.temperature_control = False
         if pickle:
             save_gridsearch(self)
-    class gs_random_generator:
+    class _gs_random_generator:
         def __init__(self, list_grid_items, df_baseline, size):
             self.list_grid_items = list_grid_items
             self.size = size
-            self.max_combs = self.max_combs()
+            self.max_combs = self._max_combs()
             self.df_baseline = df_baseline.copy()
             self.grid_argmax = np.argmax([len(x[1]) for x in self.list_grid_items])
             self.split_item = self.list_grid_items[self.grid_argmax]
@@ -269,18 +292,18 @@ class GridSearch:
             self.grid_result = [[] for _ in range(self.max_parallel)]
             self.grid_result_not_unique = [[] for _ in range(self.max_parallel)]
             self.collect_i = [True for _ in range(self.max_parallel)]
-            self.size_i = self.assign_size_i()
-            self.dict_actions = self.assign_dict_actions()
+            self.size_i = self._assign_size_i()
+            self.dict_actions = self._assign_dict_actions()
             self.process = []
             self.result_shared_array = [mp.Array("i", self.size_i[i] * len(list_grid_items)) for i in
                                         range(self.max_parallel)]
-        def max_combs(self):
+        def _max_combs(self):
             max_comb = 1
             for grid_item in self.list_grid_items:
                 max_comb = max_comb * len(grid_item[1])
             print(self.size / max_comb, "% of possible combinations requested")
             return max_comb
-        def assign_size_i(self):
+        def _assign_size_i(self):
             reg_size = self.size // self.max_parallel
             last_size = self.size - (self.max_parallel - 1) * reg_size
             distribution = []
@@ -288,7 +311,7 @@ class GridSearch:
                 distribution.append(reg_size)
             distribution.append(last_size)
             return distribution
-        def assign_dict_actions(self):
+        def _assign_dict_actions(self):
             dict_actions = {}
             dict_actions[0] = self.split_item
             idx = 1
@@ -297,9 +320,9 @@ class GridSearch:
                     dict_actions[idx] = el
                     idx += 1
             return dict_actions
-        def create_random_grid(self):
+        def _create_random_grid(self):
             for i in range(self.max_parallel):
-                self.process.append(Process(target=self.generate_position_i, args=[i]))
+                self.process.append(Process(target=self._generate_position_i, args=[i]))
                 self.process[i].start()
             for j in range(self.max_parallel):
                 self.process[i].join()
@@ -314,7 +337,7 @@ class GridSearch:
             d = pd.concat(y)
             d = d.sort_values(by=list(d.columns))
             return d
-        def generate_position_i(self, i):
+        def _generate_position_i(self, i):
             reg_range_len = len(self.split_item[1]) // self.max_parallel
             if (i != self.max_parallel - 1):
                 idx_range_strt = i * reg_range_len
@@ -324,7 +347,7 @@ class GridSearch:
                 idx_range_end = len(self.split_item[1]) - 1
             N = self.size_i[i]
             collect_i = True
-            t_i = threading.Thread(target=self.collect_data, args=[idx_range_strt, idx_range_end, i, N])
+            t_i = threading.Thread(target=self._collect_data, args=[idx_range_strt, idx_range_end, i, N])
             t_i.start()
             time.sleep(0.5)
             s = 0
@@ -346,7 +369,7 @@ class GridSearch:
                 for el in obs:
                     self.result_shared_array[i][r] = el
                     r += 1
-        def collect_data(self, idx_range_strt, idx_range_end, i, size):
+        def _collect_data(self, idx_range_strt, idx_range_end, i, size):
             j = 0
             while self.collect_i[i] and j < size * 10:
                 data = []
@@ -366,6 +389,7 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
+    #model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     gs = GridSearch(model, "toy_example_gs")
     gs.add_grid_item([("MOVE_LEFT_FROM", range(5, 10))])
     gs.add_grid_item(("MOVE_RIGHT_FROM", range(100, 200)))
@@ -374,3 +398,4 @@ if __name__ == '__main__':
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
     gs.create_grid(random=True, size=10)
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = True)
+    print(gs.grid)

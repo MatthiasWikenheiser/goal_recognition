@@ -143,7 +143,7 @@ class prap_model:
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
         from given obs_action_sequence.
         :param step: specifies how many observations in observation sequence get solved.
-                     default (-1) results steps = length of observation sequence
+                     If set to -1 (default) entire observation sequence is solved
         :param priors: priors of goal_list, default assigns equal probabilites to each goal
         :param beta: beta in P(O|G) and P(!O|G)
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
@@ -212,14 +212,13 @@ class prap_model:
             prob_normalised_dict[key] = (prob[i]/(sum(prob)))
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=False):
         """
         RUN perform_solve_observed BEFORE.
         plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
         :param figsize_x: sets size of x-axis (steps)
         :param figsize_y: sets size of y-axis (probability)
-        :return:
+        :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is False.
         """
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
         probs_nrmlsd = []

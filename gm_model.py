@@ -12,7 +12,7 @@ class gm_model:
     """
     def __init__(self, domain_root, goal_list, obs_action_sequence, planner = "ff_2_1"):
         """
-        :param domain_root: pddl_domain on which the prap_model evolves in order to assign a probability to each goal.
+        :param domain_root: pddl_domain on which the goal recognition problem is solved.
         :param goal_list: list of pddl_problems, which represent the goals to assign probabilites to.
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
@@ -335,7 +335,8 @@ class gm_model:
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
         from given obs_action_sequence.
-        :param step: specifies how many observations in observation sequence get solved
+        :param step: specifies how many observations in observation sequence get solved.
+                     If set to -1 (default) entire observation sequence is solved
         :param priors: priors of goal_list, default assigns equal probabilites to each goal
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
 
@@ -371,14 +372,13 @@ class gm_model:
                 key_most_likeli.append(key)
                 most_likeli = dict_proba[key]
         return key_most_likeli
-
     def plot_prob_goals(self, figsize_x = 8, figsize_y = 5, adapt_y_axis = True):
         """
         RUN perform_solve_observed BEFORE.
         plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
         :param figsize_x: sets size of x-axis (steps)
         :param figsize_y: sets size of y-axis (probability)
-        :return:
+        :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is True.
         """
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
         probs_nrmlsd = []
@@ -420,9 +420,3 @@ if __name__ == '__main__':
     model.perform_solve_observed()
     print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
-
-
-
-
-
-
