@@ -50,7 +50,15 @@ class GridSearch:
         self.temperature_control = False
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
+        self.grid_optimal_info = self._create_grid_optimal_info()
         # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+    def _create_grid_optimal_info(self):
+        goal_list = [goal.name for goal in self.model_root.goal_list[0]]
+        baseline = [self.grid["config"].iloc[0] for _ in range(len(goal_list))]
+        grid_optimal_info = pd.DataFrame({"config":baseline, "goal":goal_list}) #self.grid[config]
+        grid_optimal_info["solved"] = np.nan
+        grid_optimal_info["time"] = np.nan
+        return grid_optimal_info
     def _create_df_action_cost(self):
         df_action_costs = pd.DataFrame()
         df_action_costs["config"] = [self.name + "_baseline"]
@@ -396,6 +404,6 @@ if __name__ == '__main__':
     gs.add_grid_item(("MOVE_DOWN_FROM", range(200, 3000)))
     gs.add_grid_item(("MOVE_LOWER_RIGHT_FROM", range(50, 60)))
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
-    gs.create_grid(random=True, size=10)
-    gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = True)
+    gs.create_grid(random=True, size=4)
+    gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = False)
     print(gs.grid)
