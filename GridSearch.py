@@ -114,7 +114,7 @@ class GridSearch:
             result_df["seconds"] = np.nan
             self.grid = result_df
         else:
-            max_combs = np.prod([len(x[1]) for x in self.grid_item])
+            max_combs = abs(np.prod([len(x[1]) for x in self.grid_item]))
             if size >= max_combs:
                 return "size is equal or larger than maximal combinations"
             else:
