@@ -116,7 +116,7 @@ class GridSearch:
         else:
             max_combs = abs(np.prod([len(x[1]) for x in self.grid_item]))
             if size >= max_combs:
-                return "size is equal or larger than maximal combinations"
+                return "size is equal or larger than maximal combinations "
             else:
                 rgs = self._gs_random_generator(self.grid_item, self.grid, size)
                 f = rgs._create_random_grid()
