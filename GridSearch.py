@@ -50,15 +50,7 @@ class GridSearch:
         self.temperature_control = False
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
-        self.grid_optimal_info = self._create_grid_optimal_info()
         # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
-    def _create_grid_optimal_info(self):
-        goal_list = [goal.name for goal in self.model_root.goal_list[0]]
-        baseline = [self.grid["config"].iloc[0] for _ in range(len(goal_list))]
-        grid_optimal_info = pd.DataFrame({"config":baseline, "goal":goal_list}) #self.grid[config]
-        grid_optimal_info["solved"] = np.nan
-        grid_optimal_info["time"] = np.nan
-        return grid_optimal_info
     def _create_df_action_cost(self):
         df_action_costs = pd.DataFrame()
         df_action_costs["config"] = [self.name + "_baseline"]
@@ -257,20 +249,6 @@ class GridSearch:
                     restart = True
                 time.sleep(1)
             if not restart:
-                goals = list(self.grid_optimal_info["goal"].unique())
-                if idx != 0:
-                    config_name = [self.grid["config"].iloc[idx] for _ in range(len(goals))]
-                    config_df = pd.DataFrame({"config": config_name, "goal": goals})
-                    config_df["solved"] = np.nan
-                    config_df["time"] = np.nan
-                    self.grid_optimal_info = pd.concat([self.grid_optimal_info, config_df], ignore_index=True)
-                for goal in goals:
-                    self.grid_optimal_info.loc[(self.grid_optimal_info["config"] == self.grid.loc[idx, "config"]) &
-                                               (self.grid_optimal_info["goal"] == goal), "solved"] = \
-                        int(self.model_list[i].steps_optimal.plan_achieved[goal])
-                    self.grid_optimal_info.loc[(self.grid_optimal_info["config"] == self.grid.loc[idx, "config"]) &
-                                               (self.grid_optimal_info["goal"] == goal), "time"] = \
-                        self.model_list[i].steps_optimal.time[goal]
                 if (self.model_list[i].steps_optimal.solved == 1):
                     self.grid.loc[idx, "optimal_feasible"] = 1
                     if multiprocess:
