@@ -159,18 +159,22 @@ class GridSearch:
             file_remove = model_remove.domain_root.domain_path
         os.remove(file_remove)
         self.model_list.remove(model_remove)
+
     def _monitor_temperature_mean(self, celsius_stop, cool_down_time, update_time):
         self.temperature_control = True
         temperature_str = str(subprocess.check_output("sensors", shell=True))
+        tctl_start = temperature_str.find("Tctl")
         temperature = float(
-            temperature_str[temperature_str.find("Tctl") + 6:temperature_str.find("xc2") - 1].replace("+", "").replace(
+            temperature_str[tctl_start + 6:temperature_str[tctl_start:].find("xc2") + tctl_start - 1].replace("+",
+                                                                                                              "").replace(
                 " ", ""))
         temperatures = np.repeat(temperature, 15)
         while self.temperature_control:
             temperature_str = str(subprocess.check_output("sensors", shell=True))
+            tctl_start = temperature_str.find("Tctl")
             temperature = float(
-                temperature_str[temperature_str.find("Tctl") + 6:temperature_str.find("xc2") - 1].replace("+",
-                                                                                                          "").replace(
+                temperature_str[tctl_start + 6:temperature_str[tctl_start:].find("xc2") + tctl_start - 1].replace("+",
+                                                                                                                  "").replace(
                     " ", ""))
             temperatures = np.append(temperatures[1:], temperature)
             self.temperature_mean_cur = np.mean(temperatures)
