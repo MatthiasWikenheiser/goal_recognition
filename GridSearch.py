@@ -107,6 +107,8 @@ class GridSearch:
             self.grid = result_df
         else:
             max_combs = abs(np.prod([len(x[1]) for x in self.grid_item]))
+            if max_combs == 0: # number too big
+                max_combs = 10**10
             if size >= max_combs:
                 return "size is equal or larger than maximal combinations "
             else:
