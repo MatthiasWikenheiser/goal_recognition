@@ -118,12 +118,16 @@ class GridSearch:
                 f["config"] = self.name + "_config_" + f.index.astype(str)
                 self.grid = pd.concat([self.grid, f])
                 self.grid = self.grid.reset_index().iloc[:, 1:]
-    def _create_domain_config(self, idx):
+    def _create_domain_config(self, idx, model_list_type = 1):
+        #model_list_type == 1: model_list, == 2: model_reduce_cur
         if type(self.model_root) == prap_model:
             domain = copy(self.model_root.domain_list[0])
         elif type(self.model_root) == gm_model:
             domain = copy(self.model_root.domain_root)
-        config_idx = self.grid.iloc[idx, :]
+        if model_list_type == 1:
+            config_idx = self.grid.iloc[idx, :]
+        if model_list_type == 2:
+            config_idx = self.grid_expanded.iloc[idx, :]
         new_domain = f"(define (domain {domain.name})\n"
         new_domain = new_domain + domain.requirements + "\n"
         new_domain = new_domain + domain.types + "\n"
@@ -141,10 +145,17 @@ class GridSearch:
             domain.action_dict[action].set_action_cost(new_cost)
             new_domain = new_domain + domain.action_dict[action].action + "\n"
         new_domain = new_domain + "\n)"
-        with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
-            domain_config.write(new_domain)
-        self.model_list.append(self.model_type(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+        if model_list_type == 1:
+            with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
+                domain_config.write(new_domain)
+            self.model_list.append(self.model_type(pddl_domain(self.path + config_idx["config"] + ".pddl"),
                                           self.goal_list_path, self.model_root.observation, planner = self.planner))
+        elif model_list_type == 2:
+            with open(self.path_reduce + config_idx["config"] + ".pddl", "w") as domain_config:
+                domain_config.write(new_domain)
+            self.model_reduce_cur = self.model_type(pddl_domain(self.path_reduce + config_idx["config"] + ".pddl"),
+                                                    self.goal_list_path, self.model_root.observation,
+                                                    planner=self.planner)
     def _remove_model_domain_config(self, i):
         model_remove = self.model_list[i]
         if type(self.model_root) == prap_model:
@@ -153,7 +164,6 @@ class GridSearch:
             file_remove = model_remove.domain_root.domain_path
         os.remove(file_remove)
         self.model_list.remove(model_remove)
-
     def _monitor_temperature_mean(self, celsius_stop, cool_down_time, update_time):
         self.temperature_control = True
         temperature_str = str(subprocess.check_output("sensors", shell=True))
@@ -176,6 +186,184 @@ class GridSearch:
             self.temperature_array = np.append(self.temperature_array[1:], self.temperature_mean_cur)
             # print("array, ", self.temperature_array )
             time.sleep(update_time)
+
+    def expand_feasible_configs(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
+                              timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
+        self.grid_expanded = self.grid[self.grid["optimal_feasible"] == 1]
+        self.grid_expanded = self.grid_expanded.reset_index().iloc[:,1:]
+        self.grid_expanded["config"] = self.grid_expanded["config"].str.replace("config", "reduce")
+        t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
+        t.start()
+        if type(self.model_root) == prap_model:
+            domain_root = self.model_root.domain_list[0]
+        elif type(self.model_root) == gm_model:
+            domain_root = self.model_root.domain_root
+        domain = copy(domain_root)
+        path_pcs = domain.domain_path.split("/")
+        path = ""
+        for path_pc in path_pcs[:-1]:
+            path = path + path_pc + "/"
+        path += self.name + "/reduce"
+        print(path)
+        if not os.path.exists(path):
+            os.mkdir(path)
+        self.path_reduce = path + "/"
+        if not os.path.exists(self.path_reduce + f"{self.planner}"):
+            shutil.copy(f"{self.planner}", self.path_reduce + f"{self.planner}")
+        for goal in self.model_root.goal_list[0]:
+            if not os.path.exists(self.path_reduce + goal.problem_path.split("/")[-1]):
+                shutil.copy(goal.problem_path, self.path_reduce + goal.problem_path.split("/")[-1])
+            self.goal_list_path.append(pddl_problem(self.path_reduce + goal.problem_path.split("/")[-1]))
+        idx = 0
+        while idx < len(self.grid_expanded):
+            print("-------------------")
+            self._create_domain_config(idx, model_list_type = 2)
+            if type(self.model_reduce_cur) == prap_model:
+                print(self.model_reduce_cur.domain_list[0].domain_path.split("/")[-1])
+            elif type(self.model_reduce_cur) == gm_model:
+                print(self.model_reduce_cur.domain_root.domain_path.split("/")[-1])
+            cols_grid_exp = [col for col in self.grid_expanded.columns if col not in ["config", "optimal_feasible",
+                                                                                      "seconds"]]
+            i = 0
+            while i < len(cols_grid_exp):
+                if self.temperature_mean_cur >= celsius_stop:
+                    if np.sum(self.temperature_array >= celsius_stop) == len(self.temperature_array):
+                        print("cooldown")
+                        for sec in range(0, cool_down_time):
+                            if sec % 10 == 0:
+                                print("temperature_mean_cur: ", self.temperature_mean_cur)
+                            time.sleep(1)
+                if self.grid_expanded.loc[idx,cols_grid_exp[i]] > 1:
+                    print(cols_grid_exp[i])
+                    old_val = self.grid_expanded.loc[idx,cols_grid_exp[i]]
+                    self.grid_expanded.loc[idx, cols_grid_exp[i]] = 1
+                    self._create_domain_config(idx, model_list_type = 2)
+                    time.sleep(1)
+                    while (max(psutil.cpu_percent(percpu=True)) > 30):
+                        time.sleep(1)
+                    try:
+                        self.model_reduce_cur.perform_solve_optimal(multiprocess=multiprocess, type_solver=type_solver,
+                                                                 weight=weight, timeout=timeout)
+                    except:
+                        pass
+                    start_time = time.time()
+                    restart = False
+                    s = 15
+                    while (self.model_reduce_cur.steps_optimal.solved == 0 and (time.time() - start_time <= timeout + 15)):
+                        print(self.model_reduce_cur.steps_optimal.solved) #bug here why?
+                        if (time.time() - start_time > timeout):
+                            print(time.time() - start_time, "s" )
+                            print("timeout reached")
+                            print("continue in ", s)
+                            s -= 1
+                            restart = True
+                        time.sleep(1)
+                    if not restart:
+                        if (self.model_reduce_cur.steps_optimal.solved == 1):
+                            self.grid_expanded.loc[idx, "optimal_feasible"] = 1
+                            if multiprocess:
+                                self.grid_expanded.loc[idx, "seconds"] = self.model_reduce_cur.mp_seconds
+                            # else:
+                            # keys = self.model_list[i+1].prap_steps_optimal.time.keys()
+                            # self.model_list[i+1].prap_steps_optimal.time= max([self.model_list[i+1].prap_steps_optimal.time[key]
+                            #     for key in keys])
+
+
+                            #if pickle:
+                             #   save_gridsearch(self)
+                        else:
+                            self.grid_expanded.loc[idx, "optimal_feasible"] = 0
+                            self.grid_expanded.loc[idx, cols_grid_exp[i]] = old_val
+
+                        #if keep_files:
+                            #if self.grid.loc[idx, "optimal_feasible"] == 0:
+                               # self._remove_model_domain_config(i)
+                               # i -= 1
+                        #else:
+                           # self._remove_model_domain_config(i)
+                           # i -= 1
+                    else:
+                        [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                        i -=1
+                i += 1
+
+
+                        #self._remove_model_domain_config(i)
+
+
+            idx += 1
+        self.temperature_control = False
+        """
+
+            
+            
+            start_time = time.time()
+            restart = False
+            s = 15
+            
+            
+            
+            
+            
+            
+            while (self.model_list[i].steps_optimal.solved == 0 and (time.time() - start_time <= timeout + 15)):
+                if (time.time() - start_time > timeout):
+                    print("timeout reached")
+                    print("continue in ", s)
+                    s -= 1
+                    restart = True
+                time.sleep(1)
+            
+            
+            
+            if not restart:
+                if (self.model_list[i].steps_optimal.solved == 1):
+                    self.grid.loc[idx, "optimal_feasible"] = 1
+                    if multiprocess:
+                        self.grid.loc[idx, "seconds"] = self.model_list[i].mp_seconds
+                    # else:
+                    # keys = self.model_list[i+1].prap_steps_optimal.time.keys()
+                    # self.model_list[i+1].prap_steps_optimal.time= max([self.model_list[i+1].prap_steps_optimal.time[key]
+                    #     for key in keys])
+                    if pickle:
+                        save_gridsearch(self)
+                else:
+                    self.grid.loc[idx, "optimal_feasible"] = 0
+                if keep_files:
+                    if self.grid.loc[idx, "optimal_feasible"] == 0:
+                        self._remove_model_domain_config(i)
+                        i -= 1
+                else:
+                    self._remove_model_domain_config(i)
+                    i -= 1
+                i += 1
+                idx += 1
+            else:
+                [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                self._remove_model_domain_config(i)
+        
+        
+        
+        if type(self.model_root) == prap_model:
+            for action in self.model_root.domain_list[0].action_dict.keys():
+                new_cost = self.grid.iloc[0, :][action]
+                self.model_root.domain_list[0].action_dict[action].set_action_cost(new_cost)
+        elif type(self.model_root) == gm_model:
+            for action in self.model_root.domain_root.action_dict.keys():
+                new_cost = self.grid.iloc[0, :][action]
+                self.model_root.domain_root.action_dict[action].set_action_cost(new_cost)
+        self.temperature_control = False
+        
+        
+        
+        
+        if pickle:
+            save_gridsearch(self)
+"""
+
+
+
+
     def check_feasible_domain(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
         """
@@ -385,7 +573,7 @@ class GridSearch:
                 self.grid_result_not_unique[i].append(data)
                 j += 1
 if __name__ == '__main__':
-    toy_example_domain = pddl_domain('domain.pddl')
+    """toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
     problem_b = pddl_problem('problem_B.pddl')
     problem_c = pddl_problem('problem_C.pddl')
@@ -404,4 +592,6 @@ if __name__ == '__main__':
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
     gs.create_grid(random=True, size=4)
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = False)
-    print(gs.grid)
+    print(gs.grid)"""
+    gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
+    gs.expand_feasible_configs(timeout=30)
