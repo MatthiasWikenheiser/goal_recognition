@@ -190,8 +190,24 @@ class GridSearch:
             self.temperature_array = np.append(self.temperature_array[1:], self.temperature_mean_cur)
             # print("array, ", self.temperature_array )
             time.sleep(update_time)
-    def expand_feasible_configs(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
+    def reduce_feasible_configs(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
+        """
+        Reduces feasible grid-items found from hundreds to 1 or in steps of 10ths. Might still be buggy.
+        :param multiprocess: if True, all problems (goals) are solved in parallel.
+        :param keep_files: if True, feasible_domains are kept in directory.
+        :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*)
+         is considered
+        :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
+        :param timeout: after specified timeout is reached, all process for one grid configuration are getting killed,
+        next grid configuration is then executed.
+        :param pickle: if True, GridSearch object gets pickled everytime a feasible grid configuration is found.
+        :param celsius_stop: for a less noisy apartment and for increasing the durability of hardware, cool down break
+        between grid configurations if core temperature (AMD cpu) averages specified temperature.
+        :param cool_down_time: cool down break between grid configurations if core temperature (AMD cpu) averages
+        specified temperature in celsius_stop.
+        :param update_time: time interval for checking average temperature.
+        """
         self.grid_expanded = self.grid[self.grid["optimal_feasible"] == 1]
         self.grid_expanded = self.grid_expanded.reset_index().iloc[:,1:]
         self.grid_expanded["config"] = self.grid_expanded["config"].str.replace("config", "reduce")
@@ -348,11 +364,6 @@ class GridSearch:
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
             idx += 1
         self.temperature_control = False
-
-
-
-
-
     def check_feasible_domain(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
         """
