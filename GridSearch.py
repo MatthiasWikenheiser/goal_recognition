@@ -346,7 +346,6 @@ class GridSearch:
                             self._remove_model_domain_config(type_grid=2)
                     else:
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-
             idx += 1
         self.temperature_control = False
 
