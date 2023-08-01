@@ -364,6 +364,42 @@ class GridSearch:
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
             idx += 1
         self.temperature_control = False
+    def expand_grid(self, size):
+        new_expand_grid = self.grid_expanded.copy()
+        new_expand_grid["reduced"] = 1
+        new_expand_grid = new_expand_grid[[c for c in new_expand_grid.columns
+                                           if c in ['config', 'optimal_feasible', 'seconds']] + ["reduced"] +
+              [c for c in new_expand_grid.columns if c not in ['config', 'optimal_feasible', 'seconds', 'reduced']]]
+        if size < len(new_expand_grid) :
+            len_list_rows = size
+        else: len_list_rows = len(new_expand_grid)
+        list_rows = []
+        for i in range(len_list_rows):
+            row_df = new_expand_grid[new_expand_grid["config"] == new_expand_grid.loc[i,"config"]]
+            row_df = row_df.reset_index().iloc[:,1:]
+            list_rows.append(row_df)
+        ##here to manipulate list-grid_items
+
+
+        ####
+        size_per_row = size // len_list_rows
+        print(len_list_rows)
+        print(size)
+        print(size_per_row)
+        #self.rows_rgs = []
+        rows_rgs = []
+        for row in list_rows:
+            print(row.loc[0,"config"])
+            rgs = self._gs_random_generator(self.grid_item, row, size=size_per_row)
+            row_rgs = rgs._create_random_grid()
+            #self.rows_rgs.append(row_rgs)
+            rows_rgs.append(row_rgs)
+            time.sleep(1)
+
+
+
+
+        return rows_rgs
     def check_feasible_domain(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
         """
@@ -594,4 +630,4 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = False)
     print(gs.grid)"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
-    gs.expand_feasible_configs(timeout=30)
+    f = gs.expand_grid(size = 100)
