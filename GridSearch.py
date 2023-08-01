@@ -289,6 +289,7 @@ class GridSearch:
                         self._remove_model_domain_config(type_grid = 2)
                 else:
                     [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                    self.grid_expanded.loc[idx, cols_grid_exp[i]] = old_val
                     i -=1
                 i += 1
             print("reduce_columns")
@@ -336,7 +337,7 @@ class GridSearch:
                                 save_gridsearch(self)
                         else:
                             self.grid_expanded.loc[idx, "optimal_feasible"] = 0
-                            self.grid_expanded.loc[idx, cols_grid_exp[i]] = old_val
+                            self.grid_expanded.loc[idx, action] = old_val
                             c_action += 10
                         if keep_files:
                             if self.grid_expanded.loc[idx, "optimal_feasible"] == 0:
