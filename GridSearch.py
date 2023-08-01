@@ -217,7 +217,7 @@ class GridSearch:
             if not os.path.exists(self.path_reduce + goal.problem_path.split("/")[-1]):
                 shutil.copy(goal.problem_path, self.path_reduce + goal.problem_path.split("/")[-1])
         idx = 0
-        while idx < 1:#len(self.grid_expanded):
+        while idx < len(self.grid_expanded):
             print("-------------------")
             necessary_actions = []
             self._create_domain_config(idx, model_list_type = 2)
@@ -232,9 +232,8 @@ class GridSearch:
                 if self.grid_expanded.loc[idx, col] > 1:
                     rel_cols_grid_exp.append(col)
             cols_grid_exp = rel_cols_grid_exp
-            i = 10
-            #i = 0
-            while i  < 16: #len(cols_grid_exp):
+            i = 0
+            while i  < len(cols_grid_exp):
                 if self.temperature_mean_cur >= celsius_stop:
                     if np.sum(self.temperature_array >= celsius_stop) == len(self.temperature_array):
                         print("cooldown")
