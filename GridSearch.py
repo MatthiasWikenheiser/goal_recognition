@@ -365,8 +365,21 @@ class GridSearch:
             idx += 1
         self.temperature_control = False
     def expand_grid(self, size):
+        """
+        Expands grid_expanded from reduced solvable configurations by size specified.
+        RUN METHOD reduce_feasible_configs BEFORE! Keeps reduced grid_items from before.
+        :param size: specifies the amount of configurations added to grid_expanded
+        """
+        if type(self.model_root) == prap_model:
+            domain_root = self.model_root.domain_list[0]
+        elif type(self.model_root) == gm_model:
+            domain_root = self.model_root.domain_root
+        domain = copy(domain_root)
+        name_config = domain.domain_path.split("/")[-1]
+        name_config +=  "_reduce_config_"
         new_expand_grid = self.grid_expanded.copy()
-        new_expand_grid["reduced"] = 1
+        if not "reduced" in new_expand_grid.columns:
+            new_expand_grid["reduced"] = 1
         new_expand_grid = new_expand_grid[[c for c in new_expand_grid.columns
                                            if c in ['config', 'optimal_feasible', 'seconds']] + ["reduced"] +
               [c for c in new_expand_grid.columns if c not in ['config', 'optimal_feasible', 'seconds', 'reduced']]]
@@ -378,28 +391,25 @@ class GridSearch:
             row_df = new_expand_grid[new_expand_grid["config"] == new_expand_grid.loc[i,"config"]]
             row_df = row_df.reset_index().iloc[:,1:]
             list_rows.append(row_df)
-        ##here to manipulate list-grid_items
-
-
-        ####
         size_per_row = size // len_list_rows
-        print(len_list_rows)
-        print(size)
-        print(size_per_row)
-        #self.rows_rgs = []
         rows_rgs = []
         for row in list_rows:
             print(row.loc[0,"config"])
-            rgs = self._gs_random_generator(self.grid_item, row, size=size_per_row)
+            new_list_grid_item = []
+            for item in self.grid_item:
+                if row[item[0]].iloc[0] == 1:
+                    new_list_grid_item.append((item[0], list(range(1,11))))
+                else:
+                    new_list_grid_item.append((item[0], list(range(5,row[item[0]].iloc[0] +1, 5))))
+            rgs = self._gs_random_generator(new_list_grid_item, row, size=size_per_row)
             row_rgs = rgs._create_random_grid()
-            #self.rows_rgs.append(row_rgs)
             rows_rgs.append(row_rgs)
+            row_rgs["reduced"] = 0
             time.sleep(1)
-
-
-
-
-        return rows_rgs
+        new_expand_grid = pd.concat([new_expand_grid] + rows_rgs)
+        new_expand_grid = new_expand_grid.reset_index().iloc[:,1:]
+        new_expand_grid["config"] = name_config + new_expand_grid.index.astype(str)
+        self.grid_expanded = new_expand_grid
     def check_feasible_domain(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
         """
@@ -630,4 +640,4 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = False)
     print(gs.grid)"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
-    f = gs.expand_grid(size = 100)
+    f = gs.expand_grid(size = 1000)
