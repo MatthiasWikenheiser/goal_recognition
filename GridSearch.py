@@ -119,14 +119,14 @@ class GridSearch:
                 self.grid = pd.concat([self.grid, f])
                 self.grid = self.grid.reset_index().iloc[:, 1:]
     def _create_domain_config(self, idx, model_list_type = 1):
-        #model_list_type == 1: model_list, == 2: model_reduce_cur
+        #model_list_type == 1: model_list, == 2: model_reduce_cur, model_list_type == 3: model_list_expanded
         if type(self.model_root) == prap_model:
             domain = copy(self.model_root.domain_list[0])
         elif type(self.model_root) == gm_model:
             domain = copy(self.model_root.domain_root)
         if model_list_type == 1:
             config_idx = self.grid.iloc[idx, :]
-        if model_list_type == 2:
+        if model_list_type == 2 or model_list_type == 3:
             config_idx = self.grid_expanded.iloc[idx, :]
         new_domain = f"(define (domain {domain.name})\n"
         new_domain = new_domain + domain.requirements + "\n"
@@ -156,11 +156,19 @@ class GridSearch:
             self.model_reduce_cur = self.model_type(pddl_domain(self.path_reduce + config_idx["config"] + ".pddl"),
                                                     self.goal_list_path, self.model_root.observation,
                                                     planner=self.planner)
+        if model_list_type == 3:
+            with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
+                domain_config.write(new_domain)
+            self.model_list_expanded.append(self.model_type(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+                                                   self.goal_list_path, self.model_root.observation,
+                                                   planner=self.planner))
     def _remove_model_domain_config(self, i=0, type_grid=1):
-        if type_grid == 1: #1:check_optimal_feasible 2:expand grid
+        if type_grid == 1: #1:check_optimal_feasible 2:expand grid 3:expand grid in check_optimal_feasible
             model_remove = self.model_list[i]
         elif type_grid == 2:
             model_remove = self.model_reduce_cur
+        elif type_grid == 3:
+            model_remove = self.model_list_expanded[i]
         if type(model_remove) == prap_model:
             file_remove = model_remove.domain_list[0].domain_path
         elif type(model_remove) == gm_model:
@@ -168,6 +176,8 @@ class GridSearch:
         os.remove(file_remove)
         if type_grid == 1:
             self.model_list.remove(model_remove)
+        if type_grid == 3:
+            self.model_list_expanded.remove(model_remove)
     def _monitor_temperature_mean(self, celsius_stop, cool_down_time, update_time):
         self.temperature_control = True
         temperature_str = str(subprocess.check_output("sensors", shell=True))
@@ -398,7 +408,7 @@ class GridSearch:
             new_list_grid_item = []
             for item in self.grid_item:
                 if row[item[0]].iloc[0] == 1:
-                    new_list_grid_item.append((item[0], list(range(1,11))))
+                    new_list_grid_item.append((item[0], list(range(1,6))))
                 else:
                     new_list_grid_item.append((item[0], list(range(5,row[item[0]].iloc[0] +1, 5))))
             rgs = self._gs_random_generator(new_list_grid_item, row, size=size_per_row)
@@ -410,10 +420,11 @@ class GridSearch:
         new_expand_grid = new_expand_grid.reset_index().iloc[:,1:]
         new_expand_grid["config"] = name_config + new_expand_grid.index.astype(str)
         self.grid_expanded = new_expand_grid
-    def check_feasible_domain(self, multiprocess=True, keep_files=True, type_solver='3', weight='1',
+    def check_feasible_domain(self, grid_type = 1, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
         """
         Checks whether optimal plan for all grid-items (not considering observations) can be achieved within timeout.
+        :param grid_type: if grid_type = 1 self.grid is checked, with grid_type = 2 self.grid_expanded instead.
         :param multiprocess: if True, all problems (goals) are solved in parallel.
         :param keep_files: if True, feasible_domains are kept in directory.
         :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*)
@@ -428,6 +439,28 @@ class GridSearch:
         specified temperature in celsius_stop.
         :param update_time: time interval for checking average temperature.
         """
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if grid_type == 1:
+            grid = self.grid
+            model_list = self.model_list
+        elif grid_type == 2:
+            grid = self.grid_expanded
+            self.model_list_expanded = []
+            model_list = self.model_list_expanded
+
+
         t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
         t.start()
         if type(self.model_root) == prap_model:
@@ -448,10 +481,11 @@ class GridSearch:
         for goal in self.model_root.goal_list[0]:
             if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
                 shutil.copy(goal.problem_path, self.path + goal.problem_path.split("/")[-1])
-            self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
+            if grid_type == 1:
+                self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
         i = 0
         idx = 0
-        while idx < len(self.grid):
+        while idx < len(grid):
             if self.temperature_mean_cur >= celsius_stop:
                 if np.sum(self.temperature_array >= celsius_stop) == len(self.temperature_array):
                     print("cooldown")
@@ -460,24 +494,27 @@ class GridSearch:
                             print("temperature_mean_cur: ", self.temperature_mean_cur)
                         time.sleep(1)
             print("-------------------")
-            self._create_domain_config(idx)
+            if grid_type == 1:
+                self._create_domain_config(idx, model_list_type = 1)
+            elif grid_type == 2:
+                self._create_domain_config(idx, model_list_type=3)
             if type(self.model_root) == prap_model:
-                print(self.model_list[i].domain_list[0].domain_path.split("/")[-1])
+                print(model_list[i].domain_list[0].domain_path.split("/")[-1])
             elif type(self.model_root) == gm_model:
-                print(self.model_list[i].domain_root.domain_path.split("/")[-1])
+                print(model_list[i].domain_root.domain_path.split("/")[-1])
             # print([self.model_list[i].domain_list[0].action_dict[key].action_cost for key in self.model_list[-1].domain_list[0].action_dict.keys()])
             time.sleep(1)  # remove pending tasks from cpu
             while (max(psutil.cpu_percent(percpu=True)) > 30):
                 time.sleep(1)
             try:
-                self.model_list[i].perform_solve_optimal(multiprocess=multiprocess, type_solver=type_solver,
+                model_list[i].perform_solve_optimal(multiprocess=multiprocess, type_solver=type_solver,
                                                          weight=weight, timeout=timeout)
             except:
                 pass
             start_time = time.time()
             restart = False
             s = 15
-            while (self.model_list[i].steps_optimal.solved == 0 and (time.time() - start_time <= timeout + 15)):
+            while (model_list[i].steps_optimal.solved == 0 and (time.time() - start_time <= timeout + 15)):
                 if (time.time() - start_time > timeout):
                     print("timeout reached")
                     print("continue in ", s)
@@ -485,41 +522,64 @@ class GridSearch:
                     restart = True
                 time.sleep(1)
             if not restart:
-                if (self.model_list[i].steps_optimal.solved == 1):
-                    self.grid.loc[idx, "optimal_feasible"] = 1
+                if (model_list[i].steps_optimal.solved == 1):
+                    grid.loc[idx, "optimal_feasible"] = 1
                     if multiprocess:
-                        self.grid.loc[idx, "seconds"] = self.model_list[i].mp_seconds
+                        grid.loc[idx, "seconds"] = model_list[i].mp_seconds
                     # else:
-                    # keys = self.model_list[i+1].prap_steps_optimal.time.keys()
-                    # self.model_list[i+1].prap_steps_optimal.time= max([self.model_list[i+1].prap_steps_optimal.time[key]
+                    # keys = model_list[i+1].prap_steps_optimal.time.keys()
+                    # model_list[i+1].prap_steps_optimal.time= max([model_list[i+1].prap_steps_optimal.time[key]
                     #     for key in keys])
                     if pickle:
                         save_gridsearch(self)
                 else:
-                    self.grid.loc[idx, "optimal_feasible"] = 0
+                    grid.loc[idx, "optimal_feasible"] = 0
                 if keep_files:
-                    if self.grid.loc[idx, "optimal_feasible"] == 0:
-                        self._remove_model_domain_config(i)
+                    if grid.loc[idx, "optimal_feasible"] == 0:
+                        if grid_type == 1:
+                            self._remove_model_domain_config(i)
+                        elif grid_type == 2:
+                            self._remove_model_domain_config(type_grid=3)
                         i -= 1
                 else:
-                    self._remove_model_domain_config(i)
+                    if grid_type == 1:
+                        self._remove_model_domain_config(i)
+                    elif grid_type == 2:
+                        self._remove_model_domain_config(type_grid=3)
                     i -= 1
                 i += 1
                 idx += 1
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                self._remove_model_domain_config(i)
+                if grid_type == 1:
+                    self._remove_model_domain_config(i)
+                elif grid_type == 2:
+                    self._remove_model_domain_config(type_grid=3)
         if type(self.model_root) == prap_model:
             for action in self.model_root.domain_list[0].action_dict.keys():
-                new_cost = self.grid.iloc[0, :][action]
+                new_cost = grid.iloc[0, :][action]
                 self.model_root.domain_list[0].action_dict[action].set_action_cost(new_cost)
         elif type(self.model_root) == gm_model:
             for action in self.model_root.domain_root.action_dict.keys():
-                new_cost = self.grid.iloc[0, :][action]
+                new_cost = grid.iloc[0, :][action]
                 self.model_root.domain_root.action_dict[action].set_action_cost(new_cost)
         self.temperature_control = False
         if pickle:
             save_gridsearch(self)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     class _gs_random_generator:
         def __init__(self, list_grid_items, df_baseline, size):
             self.list_grid_items = list_grid_items
@@ -619,7 +679,8 @@ class GridSearch:
                 self.grid_result_not_unique[i].append(data)
                 j += 1
 if __name__ == '__main__':
-    """toy_example_domain = pddl_domain('domain.pddl')
+    """
+    toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
     problem_b = pddl_problem('problem_B.pddl')
     problem_c = pddl_problem('problem_C.pddl')
@@ -637,7 +698,8 @@ if __name__ == '__main__':
     gs.add_grid_item(("MOVE_LOWER_RIGHT_FROM", range(50, 60)))
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
     gs.create_grid(random=True, size=4)
-    gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = False, pickle = False)
-    print(gs.grid)"""
+    gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
+    print(gs.grid)#"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
-    f = gs.expand_grid(size = 1000)
+    gs.expand_grid(size = 10)
+    gs.check_feasible_domain(grid_type = 2, keep_files=False, timeout=90, pickle=False)
