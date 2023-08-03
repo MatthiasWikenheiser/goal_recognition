@@ -545,13 +545,13 @@ class GridSearch:
                         if grid_type == 1:
                             self._remove_model_domain_config(i)
                         elif grid_type == 2:
-                            self._remove_model_domain_config(type_grid=3)
+                            self._remove_model_domain_config(i, type_grid=3)
                         i -= 1
                 else:
                     if grid_type == 1:
                         self._remove_model_domain_config(i)
                     elif grid_type == 2:
-                        self._remove_model_domain_config(type_grid=3)
+                        self._remove_model_domain_config(i, type_grid=3)
                     i -= 1
                 i += 1
                 idx += 1
@@ -560,7 +560,7 @@ class GridSearch:
                 if grid_type == 1:
                     self._remove_model_domain_config(i)
                 elif grid_type == 2:
-                    self._remove_model_domain_config(type_grid=3)
+                    self._remove_model_domain_config(i, type_grid=3)
         if type(self.model_root) == prap_model:
             for action in self.model_root.domain_list[0].action_dict.keys():
                 new_cost = grid.iloc[0, :][action]
@@ -708,4 +708,5 @@ if __name__ == '__main__':
     print(gs.grid)#"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
     gs.expand_grid(size = 300)
-    gs.check_feasible_domain(grid_type = 2, keep_files=False, timeout=90, pickle=False)
+    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=False)
+    save_gridsearch(gs)
