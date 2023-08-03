@@ -408,9 +408,9 @@ class GridSearch:
             new_list_grid_item = []
             for item in self.grid_item:
                 if row[item[0]].iloc[0] == 1:
-                    new_list_grid_item.append((item[0], list(range(1,6))))
+                    new_list_grid_item.append((item[0], list(range(1,4))))
                 else:
-                    new_list_grid_item.append((item[0], list(range(5,row[item[0]].iloc[0] +1, 5))))
+                    new_list_grid_item.append((item[0], list(range(row[item[0]].iloc[0],row[item[0]].iloc[0] + 5))))
             rgs = self._gs_random_generator(new_list_grid_item, row, size=size_per_row)
             row_rgs = rgs._create_random_grid()
             rows_rgs.append(row_rgs)
@@ -485,6 +485,12 @@ class GridSearch:
                 self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
         i = 0
         idx = 0
+        """if grid_type == 1:
+            i = 0
+            idx = 0
+        if grid_type == 2:
+            i = min(self.grid_expanded[self.grid_expanded["reduced"] == 0].index)
+            idx = i"""
         while idx < len(grid):
             if self.temperature_mean_cur >= celsius_stop:
                 if np.sum(self.temperature_array >= celsius_stop) == len(self.temperature_array):
@@ -701,5 +707,5 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
     print(gs.grid)#"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
-    gs.expand_grid(size = 10)
+    gs.expand_grid(size = 300)
     gs.check_feasible_domain(grid_type = 2, keep_files=False, timeout=90, pickle=False)
