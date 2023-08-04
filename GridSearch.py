@@ -409,7 +409,7 @@ class GridSearch:
             new_list_grid_item = []
             for item in self.grid_item:
                 if row[item[0]].iloc[0] == 1:
-                    new_list_grid_item.append((item[0], list(range(1,4))))
+                    new_list_grid_item.append((item[0], list(range(1,5))))
                 else:
                     new_list_grid_item.append((item[0], list(range(row[item[0]].iloc[0],row[item[0]].iloc[0] + 5))))
             rgs = self._gs_random_generator(new_list_grid_item, row, size=size_per_row)
