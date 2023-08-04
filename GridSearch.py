@@ -50,6 +50,7 @@ class GridSearch:
         self.temperature_control = False
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
+        self.hash_code = self.model_root.hash_code
         # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
     def _create_df_action_cost(self):
         df_action_costs = pd.DataFrame()
@@ -439,19 +440,6 @@ class GridSearch:
         specified temperature in celsius_stop.
         :param update_time: time interval for checking average temperature.
         """
-
-
-
-
-
-
-
-
-
-
-
-
-
         if grid_type == 1:
             grid = self.grid
             model_list = self.model_list
@@ -459,8 +447,6 @@ class GridSearch:
             grid = self.grid_expanded
             self.model_list_expanded = []
             model_list = self.model_list_expanded
-
-
         t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
         t.start()
         if type(self.model_root) == prap_model:
@@ -572,20 +558,6 @@ class GridSearch:
         self.temperature_control = False
         if pickle:
             save_gridsearch(self)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     class _gs_random_generator:
         def __init__(self, list_grid_items, df_baseline, size):
             self.list_grid_items = list_grid_items
@@ -707,6 +679,7 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
     print(gs.grid)#"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
+    print(gs.hash_code)
     gs.expand_grid(size = 300)
-    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=False)
+    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=True)
     save_gridsearch(gs)

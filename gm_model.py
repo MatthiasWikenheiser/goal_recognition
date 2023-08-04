@@ -6,6 +6,7 @@ import shutil
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+import hashlib
 class gm_model:
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
@@ -28,6 +29,17 @@ class gm_model:
         self.mp_seconds = None
         self.predicted_step = {}
         self.at_goal = None
+        self.hash_code = self._create_hash_code()
+    def _create_hash_code(self):
+        action_list = list(self.domain_root.action_dict.keys())
+        action_list.sort()
+        input_string = ""
+        for item in action_list:
+            input_string += item
+        input_string = input_string.encode()
+        h = hashlib.new("sha224")
+        h.update(input_string)
+        return h.hexdigest()
     def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
         strt_idx = parse_string.find(key_word) + len(key_word)
@@ -416,7 +428,8 @@ if __name__ == '__main__':
     toy_example_problem_list = [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    model.perform_solve_optimal()
+    print(model.hash_code)
+    """model.perform_solve_optimal()
     model.perform_solve_observed()
     print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)
+    print(model.prob_nrmlsd_dict_list)"""

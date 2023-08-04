@@ -6,6 +6,7 @@ import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import hashlib
 def save_prap_model(model, filename):
     path = model.domain_list[0].domain_path.replace(model.domain_list[0].domain_path.split("/")[-1], "")
     with open(path + filename, "wb") as outp:
@@ -33,6 +34,17 @@ class prap_model:
         self.steps_optimal = metric_ff_solver(planner = self.planner)
         self.mp_seconds = None
         self.predicted_step = {}
+        self.hash_code = self._create_hash_code()
+    def _create_hash_code(self):
+        action_list = list(self.domain_list[0].action_dict.keys())
+        action_list.sort()
+        input_string = ""
+        for item in action_list:
+            input_string += item
+        input_string = input_string.encode()
+        h = hashlib.new("sha224")
+        h.update(input_string)
+        return h.hexdigest()
     def _create_obs_domain(self, step = 1):
         domain = self.domain_list[step-1]
         new_domain = f"(define (domain {domain.name})\n"
@@ -268,8 +280,10 @@ if __name__ == '__main__':
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
     model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    model.perform_solve_optimal(multiprocess=True)
+    print(model.hash_code)
+
+    """model.perform_solve_optimal(multiprocess=True)
     model.perform_solve_observed(multiprocess=True)
     print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)
+    print(model.prob_nrmlsd_dict_list)"""
 
