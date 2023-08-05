@@ -52,6 +52,10 @@ class GridSearch:
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
         # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+    def reset_grid_expanded(self):
+        """resets grid_expanded in order to find new configurations"""
+        self.model_list_expanded = []
+        self.grid_expanded = self.grid_expanded[self.grid_expanded["reduced"] == 1]
     def _create_df_action_cost(self):
         df_action_costs = pd.DataFrame()
         df_action_costs["config"] = [self.name + "_baseline"]
@@ -409,7 +413,7 @@ class GridSearch:
             new_list_grid_item = []
             for item in self.grid_item:
                 if row[item[0]].iloc[0] == 1:
-                    new_list_grid_item.append((item[0], list(range(1,5))))
+                    new_list_grid_item.append((item[0], list(range(1,4))))
                 else:
                     new_list_grid_item.append((item[0], list(range(row[item[0]].iloc[0],row[item[0]].iloc[0] + 5))))
             rgs = self._gs_random_generator(new_list_grid_item, row, size=size_per_row)
@@ -680,6 +684,7 @@ if __name__ == '__main__':
     print(gs.grid)#"""
     gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
     print(gs.hash_code)
-    gs.expand_grid(size = 300)
-    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=True)
+    gs.reset_grid_expanded()
+    gs.expand_grid(size = 550)
+    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=75, pickle=True)
     save_gridsearch(gs)
