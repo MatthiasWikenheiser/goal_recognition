@@ -1,6 +1,7 @@
 import pickle
 import pandas as pd
 import numpy as np
+import datetime as dt
 import itertools
 import prap_model
 from pddl import *
@@ -14,6 +15,7 @@ from multiprocessing import Process
 import random
 from copy import copy
 from multiprocess_df import _multiprocess_df
+import sqlite3 as db
 def save_gridsearch(gs):
     """
     Pickle GridSearch-object in gs.path
@@ -51,7 +53,93 @@ class GridSearch:
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
+
         # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+    def _update_db_grid_type(self, grid_type, row=None):
+        if grid_type == 1:
+            grid = self.grid[self.grid["optimal_feasible"] == 1]
+            if "reduced" not in grid.columns:
+                grid["reduced"] = 0
+        elif grid_type == 2:
+            try:
+                grid = self.grid_expanded[self.grid_expanded["optimal_feasible"] == 1]
+            except:
+                print("grid.expanded not yet created")
+                return None
+        if type(self.model_root) == prap_model:
+            domain = copy(self.model_root.domain_list[0])
+        elif type(self.model_root) == gm_model:
+            domain = copy(self.model_root.domain_root)
+        action_list = list(domain.action_dict.keys())
+        action_list.sort()
+        for action in action_list:
+            grid.loc[:, action] = grid.loc[:, action].astype(float)
+        now = dt.datetime.now()
+        time_stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        if len([c for c in grid.columns if c.startswith("ACTION")]) != len(action_list):
+            print([c for c in grid.columns if not c.startswith("ACTION")])
+            return "length of action in grid is not equivalent to actions in domain"
+        else:
+            all_cols_equivalent = True
+            missing_equivalent = []
+            for col in [c for c in grid.columns if c.startswith("ACTION")]:
+                if col not in action_list:
+                    all_cols_equivalent = False
+                    missing_equivalent.append(col)
+            if not all_cols_equivalent:
+                return f"Following columns from grid could not be found in domain actions {missing_equivalent}"
+        if row == None:
+            upload_grid = pd.DataFrame()
+            for idx in range(len(grid)):
+                action_str, hash_str_action = self._hash_action(grid, idx, action_list)
+                idx_df = pd.DataFrame({"hash_code_model": [self.hash_code], "hash_code_action": [hash_str_action],
+                                       "action_conf": [action_str], "time_stamp": [time_stamp],
+                                       "config": [grid.iloc[idx]["config"]],
+                                       "optimal_feasible": [grid.iloc[idx]["optimal_feasible"]],
+                                       "seconds": [grid.iloc[idx]["seconds"]],
+                                       "reduced": [grid.iloc[idx]["reduced"]]})
+                upload_grid = pd.concat([upload_grid, idx_df])
+            upload_grid = upload_grid.reset_index().iloc[:, 1:]
+        else:
+            action_str, hash_str_action = self._hash_action(grid, row, action_list)
+            upload_grid = pd.DataFrame({"hash_code_model": [self.hash_code], "hash_code_action": [hash_str_action],
+                                        "action_conf": [action_str], "time_stamp": [time_stamp],
+                                        "config": [grid.iloc[row]["config"]],
+                                        "optimal_feasible": [grid.iloc[row]["optimal_feasible"]],
+                                        "seconds": [grid.iloc[row]["seconds"]],
+                                        "reduced": [grid.iloc[row]["reduced"]]})
+        query = f"SELECT DISTINCT(hash_code_action) FROM model_grid WHERE hash_code_model = '{self.hash_code}'"
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        existing_actions = pd.read_sql_query(query, db_gr)
+        db_gr.close()
+        #upload_grid = upload_grid[upload_grid["hash_code_action"].isin(existing_actions)]
+
+
+        upload_grid.loc[:, "config"] = ("x_" + upload_grid.loc[:, "config"].str.split("_").str[-2] + "_" +
+                                            upload_grid.loc[:, "config"].str.split("_").str[-1])
+                                        
+
+        return upload_grid
+    
+
+
+
+
+
+
+
+
+
+
+    def _hash_action(self, grid, row, action_list):
+        action_str = ""
+        for action in action_list:
+            action_str += str(grid.iloc[row, :][action]) + "-"
+        action_str = action_str[:-1]
+        h = hashlib.new("sha224")
+        h.update(action_str.encode())
+        hash_str_action = h.hexdigest()
+        return action_str, hash_str_action
     def reset_grid_expanded(self):
         """resets grid_expanded in order to find new configurations"""
         self.model_list_expanded = []
@@ -682,9 +770,13 @@ if __name__ == '__main__':
     gs.create_grid(random=True, size=4)
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
     print(gs.grid)#"""
-    gs = load_gridsearch("model_7_mod_wo_books_label.pickle")
-    print(gs.hash_code)
-    gs.reset_grid_expanded()
-    gs.expand_grid(size = 550)
-    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=75, pickle=True)
-    save_gridsearch(gs)
+
+    """
+    #print(gs.hash_code)
+    #gs.reset_grid_expanded()
+    #gs.expand_grid(size = 1000)
+    #gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=40, pickle=True)
+    #save_gridsearch(gs)
+    """
+    gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
+    f = gs._update_db_grid_type(grid_type=2)
