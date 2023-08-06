@@ -53,8 +53,11 @@ class GridSearch:
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
-
-        # warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+    def update_db_grid_item(self, row = None):
+        print("update grid")
+        self._update_db_grid_type(grid_type = 1, row = row)
+        print("update grid_expanded")
+        self._update_db_grid_type(grid_type=2, row=row)
     def _update_db_grid_type(self, grid_type, row=None):
         if grid_type == 1:
             grid = self.grid[self.grid["optimal_feasible"] == 1]
@@ -108,29 +111,25 @@ class GridSearch:
                                         "optimal_feasible": [grid.iloc[row]["optimal_feasible"]],
                                         "seconds": [grid.iloc[row]["seconds"]],
                                         "reduced": [grid.iloc[row]["reduced"]]})
-        query = f"SELECT DISTINCT(hash_code_action) FROM model_grid WHERE hash_code_model = '{self.hash_code}'"
+        query_ex_hash_cd = f"SELECT DISTINCT(hash_code_action) FROM model_grid WHERE hash_code_model = '{self.hash_code}'"
+        query_conf = f"SELECT DISTINCT(config) FROM model_grid WHERE hash_code_model = '{self.hash_code}'"
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
-        existing_actions = pd.read_sql_query(query, db_gr)
+        existing_actions = list(pd.read_sql_query(query_ex_hash_cd, db_gr)["hash_code_action"])
+        configurations = list(pd.read_sql_query(query_conf, db_gr)["config"])
         db_gr.close()
-        #upload_grid = upload_grid[upload_grid["hash_code_action"].isin(existing_actions)]
-
-
+        max_config = max([int(config.split("_")[-1]) for config in configurations])
+        start_new_config = max_config+1
+        upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
+        if len(upload_grid) == 0:
+            print("no new configuration found")
+            return None
+        upload_grid = upload_grid.reset_index().iloc[:,1:]
         upload_grid.loc[:, "config"] = ("x_" + upload_grid.loc[:, "config"].str.split("_").str[-2] + "_" +
-                                            upload_grid.loc[:, "config"].str.split("_").str[-1])
-                                        
+                                        (pd.Series(upload_grid.index) + start_new_config).astype(str))
 
-        return upload_grid
-    
-
-
-
-
-
-
-
-
-
-
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        upload_grid.to_sql("model_grid", db_gr, if_exists='append', index = False)
+        db_gr.close()
     def _hash_action(self, grid, row, action_list):
         action_str = ""
         for action in action_list:
@@ -771,12 +770,16 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
     print(gs.grid)#"""
 
-    """
-    #print(gs.hash_code)
-    #gs.reset_grid_expanded()
-    #gs.expand_grid(size = 1000)
-    #gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=40, pickle=True)
-    #save_gridsearch(gs)
+
+    gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
+    print(gs.hash_code)
+    gs.reset_grid_expanded()
+    gs.expand_grid(size = 300)
+    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=True)
+
+
+
     """
     gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
-    f = gs._update_db_grid_type(grid_type=2)
+    gs.update_db_grid_item()
+    """
