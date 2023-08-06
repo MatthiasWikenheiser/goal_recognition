@@ -142,9 +142,13 @@ class GridSearch:
         existing_actions = list(pd.read_sql_query(query_ex_hash_cd, db_gr)["hash_code_action"])
         configurations = list(pd.read_sql_query(query_conf, db_gr)["config"])
         db_gr.close()
-        max_config = max([int(config.split("_")[-1]) for config in configurations])
-        start_new_config = max_config+1
-        upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
+        if len(configurations) > 0:
+            max_config = max([int(config.split("_")[-1]) for config in configurations])
+            start_new_config = max_config+1
+        else:
+            start_new_config = 0
+        if len(existing_actions) > 0:
+            upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
         if len(upload_grid) == 0:
             print("no new configuration found")
             return None
