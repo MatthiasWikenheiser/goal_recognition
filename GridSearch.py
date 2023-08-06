@@ -53,6 +53,31 @@ class GridSearch:
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
+    def load_db_grid(self):
+        if len(self.grid) > 1:
+            print("already elements in grid")
+            return None
+        query = (f"""SELECT action_conf, config, optimal_feasible, seconds
+                       FROM model_grid WHERE hash_code_model = '{self.hash_code}'""")
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        download = pd.read_sql_query(query, db_gr)
+        db_gr.close()
+        if type(self.model_root) == prap_model:
+            domain = copy(self.model_root.domain_list[0])
+        elif type(self.model_root) == gm_model:
+            domain = copy(self.model_root.domain_root)
+        action_list = list(domain.action_dict.keys())
+        action_list.sort()
+        i = 0
+        while i < len(action_list):
+            download[action_list[i]] = download["action_conf"].str.split("-").str[i].astype(float)
+            self.grid[action_list[i]] = self.grid[action_list[i]].astype(float)
+            i += 1
+        download.drop(columns= "action_conf", inplace=True)
+        download["config"] = download["config"].str.replace("x_", self.name)
+        download = download[self.grid.columns]
+        self.grid = pd.concat([self.grid, download])
+        self.grid = self.grid.reset_index().iloc[:,1:]
     def update_db_grid_item(self, row = None):
         print("update grid")
         self._update_db_grid_type(grid_type = 1, row = row)
@@ -554,6 +579,7 @@ class GridSearch:
             os.mkdir(path)
         self.path = path + "/"
         if not os.path.exists(self.path + f"{self.planner}"):
+            os.chdir("/home/mwiubuntu/goal_recognition/")
             shutil.copy(f"{self.planner}", self.path + f"{self.planner}")
         for goal in self.model_root.goal_list[0]:
             if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
@@ -770,16 +796,14 @@ if __name__ == '__main__':
     gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
     print(gs.grid)#"""
 
-
+    """
     gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
     print(gs.hash_code)
     gs.reset_grid_expanded()
     gs.expand_grid(size = 300)
     gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=True)
-
-
-
     """
+
+
     gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
-    gs.update_db_grid_item()
-    """
+    f = gs.load_db_grid()
