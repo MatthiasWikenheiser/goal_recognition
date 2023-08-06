@@ -74,7 +74,7 @@ class GridSearch:
             self.grid[action_list[i]] = self.grid[action_list[i]].astype(float)
             i += 1
         download.drop(columns= "action_conf", inplace=True)
-        download["config"] = download["config"].str.replace("x_", self.name)
+        download["config"] = download["config"].str.replace("x_", self.name + "_")
         download = download[self.grid.columns]
         self.grid = pd.concat([self.grid, download])
         self.grid = self.grid.reset_index().iloc[:,1:]
