@@ -153,9 +153,7 @@ class GridSearch:
             print("no new configuration found")
             return None
         upload_grid = upload_grid.reset_index().iloc[:,1:]
-        upload_grid.loc[:, "config"] = ("x_" + upload_grid.loc[:, "config"].str.split("_").str[-2] + "_" +
-                                        (pd.Series(upload_grid.index) + start_new_config).astype(str))
-
+        upload_grid.loc[:, "config"] = ("x_config" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
         upload_grid.to_sql("model_grid", db_gr, if_exists='append', index = False)
         db_gr.close()
