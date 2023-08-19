@@ -228,7 +228,7 @@ class gm_model:
             else:
                 effect = self._clean_effect(effect)
                 if "(not(" in effect:
-                    opposite = re.findall("\([\s*\w*\s*]*\)", effect)[0]
+                    opposite = re.findall("\([\s*\w*\-*\s*]*\)", effect)[0]
                 else:
                     opposite = "(not" + effect + ")"
                 remember_index = -1
@@ -429,7 +429,7 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
-    """model.perform_solve_optimal()
+    model.perform_solve_optimal()
     model.perform_solve_observed()
     print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)"""
+    print(model.prob_nrmlsd_dict_list)
