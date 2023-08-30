@@ -762,3 +762,4 @@ if __name__ == '__main__':
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
     gs.create_grid(random=True, size=4)
     gs.check_feasible_domain(multiprocess=True, timeout=5, keep_files=True, pickle=False)
+    print("test")
