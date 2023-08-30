@@ -216,19 +216,6 @@ class prap_model(gr_model.gr_model):
             plt.ylim(0, 1)
         plt.grid()
         plt.show()
-    def _predict_step(self, step):
-        dict_proba = self.prob_nrmlsd_dict_list[step]
-        most_likeli = 0
-        key_most_likeli = []
-        for key in list(dict_proba.keys()):
-            if dict_proba[key] > most_likeli:
-                key_most_likeli = [key]
-                most_likeli = dict_proba[key]
-            elif dict_proba[key] == most_likeli:
-                key_most_likeli.append(key)
-                most_likeli = dict_proba[key]
-        return key_most_likeli
-
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
@@ -244,7 +231,7 @@ if __name__ == '__main__':
     model.perform_solve_optimal(multiprocess=True)
     print(model.steps_optimal.plan)
 
-    #model.perform_solve_observed(multiprocess=True)
-    #print(model.predicted_step)
-    #print(model.prob_nrmlsd_dict_list)"""
+    model.perform_solve_observed(multiprocess=True)
+    print(model.predicted_step)
+    print(model.prob_nrmlsd_dict_list)
 

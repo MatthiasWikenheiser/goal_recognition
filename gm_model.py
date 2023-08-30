@@ -307,7 +307,6 @@ class gm_model(gr_model.gr_model):
             prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-
     def perform_solve_observed(self, step = -1, priors = None, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -338,18 +337,6 @@ class gm_model(gr_model.gr_model):
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
-    def _predict_step(self, step):
-        dict_proba = self.prob_nrmlsd_dict_list[step]
-        most_likeli = 0
-        key_most_likeli = []
-        for key in list(dict_proba.keys()):
-            if dict_proba[key] > most_likeli:
-                key_most_likeli = [key]
-                most_likeli = dict_proba[key]
-            elif dict_proba[key] == most_likeli:
-                key_most_likeli.append(key)
-                most_likeli = dict_proba[key]
-        return key_most_likeli
     def plot_prob_goals(self, figsize_x = 8, figsize_y = 5, adapt_y_axis = True):
         """
         RUN perform_solve_observed BEFORE.
@@ -397,6 +384,6 @@ if __name__ == '__main__':
     print(model.hash_code)
     model.perform_solve_optimal()
     print(model.steps_optimal.plan)
-    #model.perform_solve_observed()
-    #print(model.predicted_step)
-    #print(model.prob_nrmlsd_dict_list)
+    model.perform_solve_observed()
+    print(model.predicted_step)
+    print(model.prob_nrmlsd_dict_list)

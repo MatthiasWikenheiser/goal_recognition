@@ -56,6 +56,19 @@ class gr_model:
         print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
         if multiprocess:
             self.mp_seconds = round(time.time() - start_time, 2)
+    def _predict_step(self, step):
+        #empty shell due to missing perform_solve_observed, just defined here for subclasses
+        dict_proba = self.prob_nrmlsd_dict_list[step]
+        most_likeli = 0
+        key_most_likeli = []
+        for key in list(dict_proba.keys()):
+            if dict_proba[key] > most_likeli:
+                key_most_likeli = [key]
+                most_likeli = dict_proba[key]
+            elif dict_proba[key] == most_likeli:
+                key_most_likeli.append(key)
+                most_likeli = dict_proba[key]
+        return key_most_likeli
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
