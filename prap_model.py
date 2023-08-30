@@ -1,5 +1,6 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
+import gr_model
 import time
 import os
 import shutil
@@ -7,13 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import hashlib
-def save_prap_model(model, filename):
-    path = model.domain_list[0].domain_path.replace(model.domain_list[0].domain_path.split("/")[-1], "")
-    with open(path + filename, "wb") as outp:
-        pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
-def load_prap_model(file):
-    return pickle.load(open(file, "rb"))
-class prap_model:
+class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
     """
@@ -24,27 +19,8 @@ class prap_model:
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
-        self.domain_list = [domain_root]
-        self.goal_list = [goal_list]
-        self.planner = planner
-        self.observation = obs_action_sequence
-        self.steps_observed = []
-        self.prob_dict_list = []
-        self.prob_nrmlsd_dict_list = []
-        self.steps_optimal = metric_ff_solver(planner = self.planner)
-        self.mp_seconds = None
-        self.predicted_step = {}
-        self.hash_code = self._create_hash_code()
-    def _create_hash_code(self):
-        action_list = list(self.domain_list[0].action_dict.keys())
-        action_list.sort()
-        input_string = ""
-        for item in action_list:
-            input_string += item
-        input_string = input_string.encode()
-        h = hashlib.new("sha224")
-        h.update(input_string)
-        return h.hexdigest()
+        super().__init__(domain_root, goal_list, obs_action_sequence, planner)
+        self.domain_list = [self.domain_root]
     def _create_obs_domain(self, step = 1):
         domain = self.domain_list[step-1]
         new_domain = f"(define (domain {domain.name})\n"
@@ -179,22 +155,6 @@ class prap_model:
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
-    def perform_solve_optimal(self, multiprocess = True, type_solver = '3', weight = '1', timeout = 90):
-        """
-        RUN before perform_solve_observed.
-        Solves the optimal plan for each goal in goal_list.
-        :param multiprocess: if True, all problems (goals) are solved in parallel
-        :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*) is
-         considered
-        :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
-        :param timeout: after specified timeout is reached, all process are getting killed.
-        """
-        start_time = time.time()
-        self.steps_optimal.solve(self.domain_list[0],self.goal_list[0], multiprocess = multiprocess,
-                   type_solver= type_solver, weight = weight, timeout = timeout)
-        print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        if multiprocess:
-            self.mp_seconds = round(time.time() - start_time,2)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
@@ -281,9 +241,10 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
+    model.perform_solve_optimal(multiprocess=True)
+    print(model.steps_optimal.plan)
 
-    """model.perform_solve_optimal(multiprocess=True)
-    model.perform_solve_observed(multiprocess=True)
-    print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)"""
+    #model.perform_solve_observed(multiprocess=True)
+    #print(model.predicted_step)
+    #print(model.prob_nrmlsd_dict_list)"""
 

@@ -1,5 +1,6 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
+import gr_model
 import re
 import os
 import shutil
@@ -7,7 +8,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import hashlib
-class gm_model:
+class gm_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
     """
@@ -18,28 +19,8 @@ class gm_model:
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
-        self.domain_root = domain_root
-        self.goal_list = [goal_list]
-        self.planner = planner
-        self.observation = obs_action_sequence
-        self.steps_observed = []
-        self.prob_dict_list = []
-        self.prob_nrmlsd_dict_list = []
-        self.steps_optimal = metric_ff_solver(planner = self.planner)
-        self.mp_seconds = None
-        self.predicted_step = {}
+        super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
-        self.hash_code = self._create_hash_code()
-    def _create_hash_code(self):
-        action_list = list(self.domain_root.action_dict.keys())
-        action_list.sort()
-        input_string = ""
-        for item in action_list:
-            input_string += item
-        input_string = input_string.encode()
-        h = hashlib.new("sha224")
-        h.update(input_string)
-        return h.hexdigest()
     def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
         strt_idx = parse_string.find(key_word) + len(key_word)
@@ -326,22 +307,7 @@ class gm_model:
             prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-    def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
-        """
-        RUN before perform_solve_observed.
-        Solves the optimal plan for each goal in goal_list.
-        :param multiprocess: if True, all problems (goals) are solved in parallel
-        :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*) is
-         considered
-        :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
-        :param timeout: after specified timeout is reached, all process are getting killed.
-        """
-        start_time = time.time()
-        self.steps_optimal.solve(self.domain_root, self.goal_list[0], multiprocess=multiprocess,
-                                 type_solver=type_solver, weight=weight, timeout=timeout)
-        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
-        if multiprocess:
-            self.mp_seconds = round(time.time() - start_time, 2)
+
     def perform_solve_observed(self, step = -1, priors = None, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -430,6 +396,7 @@ if __name__ == '__main__':
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
     model.perform_solve_optimal()
-    model.perform_solve_observed()
-    print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)
+    print(model.steps_optimal.plan)
+    #model.perform_solve_observed()
+    #print(model.predicted_step)
+    #print(model.prob_nrmlsd_dict_list)
