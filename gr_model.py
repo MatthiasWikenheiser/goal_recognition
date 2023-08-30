@@ -3,6 +3,8 @@ from metric_ff_solver import metric_ff_solver
 import hashlib
 import pickle
 import time
+import matplotlib.pyplot as plt
+import numpy as np
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
     with open(path + filename, "wb") as outp:
@@ -69,6 +71,38 @@ class gr_model:
                 key_most_likeli.append(key)
                 most_likeli = dict_proba[key]
         return key_most_likeli
+    def plot_prob_goals(self, adapt_y_axis, figsize_x=8, figsize_y=5):
+        """
+        RUN perform_solve_observed BEFORE.
+        plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
+        :param figsize_x: sets size of x-axis (steps)
+        :param figsize_y: sets size of y-axis (probability)
+        :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is False.
+        """
+        goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
+        probs_nrmlsd = []
+        for goal in goal_name:
+            probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
+        x = [step for step in range(1, len(self.steps_observed) + 1)]
+        plt.figure(figsize=(figsize_x, figsize_y))
+        for i in range(len(probs_nrmlsd)):
+            plt.plot(x, probs_nrmlsd[i], label=goal_name[i])
+        plt.legend()
+        plt.xticks(range(1, len(self.steps_observed) + 1))
+        plt.yticks([0, 0.25, 0.5, 0.75, 1])
+        plt.xlim(1, len(self.steps_observed))
+        if adapt_y_axis:
+            max_prob = 0
+            for step_dict in self.prob_nrmlsd_dict_list:
+                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
+            if max_prob_step > max_prob:
+                max_prob = max_prob_step
+            ticks = np.array([0, 0.25, 0.5, 0.75, 1])
+            plt.ylim(np.min(ticks[max_prob > ticks]), np.min(ticks[max_prob < ticks]))
+        else:
+            plt.ylim(0, 1)
+        plt.grid()
+        plt.show()
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')

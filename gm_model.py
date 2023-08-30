@@ -337,39 +337,8 @@ class gm_model(gr_model.gr_model):
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
-    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5, adapt_y_axis = True):
-        """
-        RUN perform_solve_observed BEFORE.
-        plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
-        :param figsize_x: sets size of x-axis (steps)
-        :param figsize_y: sets size of y-axis (probability)
-        :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is True.
-        """
-        goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
-        probs_nrmlsd = []
-        for goal in goal_name:
-            probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
-        x = [step for step in range(1,len(self.steps_observed)+1)]
-        plt.figure(figsize = (figsize_x,figsize_y))
-        for i in range(len(probs_nrmlsd)):
-            plt.plot(x, probs_nrmlsd[i], label = goal_name[i])
-        plt.legend()
-        plt.xticks(range(1,len(self.steps_observed)+1))
-        plt.yticks([0,0.25,0.5,0.75,1])
-        plt.xlim(1,len(self.steps_observed))
-        if adapt_y_axis:
-            max_prob = 0
-            for step_dict in self.prob_nrmlsd_dict_list:
-                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
-            if max_prob_step > max_prob:
-                max_prob = max_prob_step
-            ticks = np.array([0,0.25,0.5,0.75,1])
-            plt.ylim(np.min(ticks[max_prob > ticks]), np.min(ticks[max_prob < ticks]))
-        else:
-            plt.ylim(0, 1)
-        plt.grid()
-        plt.show()
-
+    def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
+        return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
