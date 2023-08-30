@@ -1,5 +1,6 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
+import gr_model
 import re
 import os
 import shutil
@@ -7,7 +8,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import hashlib
-class gm_model:
+class gm_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Goal Mirroring (GM)
      by Vered et al., 2016.
     """
@@ -18,28 +19,8 @@ class gm_model:
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
-        self.domain_root = domain_root
-        self.goal_list = [goal_list]
-        self.planner = planner
-        self.observation = obs_action_sequence
-        self.steps_observed = []
-        self.prob_dict_list = []
-        self.prob_nrmlsd_dict_list = []
-        self.steps_optimal = metric_ff_solver(planner = self.planner)
-        self.mp_seconds = None
-        self.predicted_step = {}
+        super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
-        self.hash_code = self._create_hash_code()
-    def _create_hash_code(self):
-        action_list = list(self.domain_root.action_dict.keys())
-        action_list.sort()
-        input_string = ""
-        for item in action_list:
-            input_string += item
-        input_string = input_string.encode()
-        h = hashlib.new("sha224")
-        h.update(input_string)
-        return h.hexdigest()
     def _split_recursive_and_or(self, parse_string, key_word):
         split_list = []
         strt_idx = parse_string.find(key_word) + len(key_word)
@@ -326,22 +307,6 @@ class gm_model:
             prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-    def perform_solve_optimal(self, multiprocess=True, type_solver='3', weight='1', timeout=90):
-        """
-        RUN before perform_solve_observed.
-        Solves the optimal plan for each goal in goal_list.
-        :param multiprocess: if True, all problems (goals) are solved in parallel
-        :param type_solver: option for type solver in Metricc-FF Planner, however only type_solver = '3' ("weighted A*) is
-         considered
-        :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
-        :param timeout: after specified timeout is reached, all process are getting killed.
-        """
-        start_time = time.time()
-        self.steps_optimal.solve(self.domain_root, self.goal_list[0], multiprocess=multiprocess,
-                                 type_solver=type_solver, weight=weight, timeout=timeout)
-        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
-        if multiprocess:
-            self.mp_seconds = round(time.time() - start_time, 2)
     def perform_solve_observed(self, step = -1, priors = None, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -372,51 +337,8 @@ class gm_model:
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
-    def _predict_step(self, step):
-        dict_proba = self.prob_nrmlsd_dict_list[step]
-        most_likeli = 0
-        key_most_likeli = []
-        for key in list(dict_proba.keys()):
-            if dict_proba[key] > most_likeli:
-                key_most_likeli = [key]
-                most_likeli = dict_proba[key]
-            elif dict_proba[key] == most_likeli:
-                key_most_likeli.append(key)
-                most_likeli = dict_proba[key]
-        return key_most_likeli
-    def plot_prob_goals(self, figsize_x = 8, figsize_y = 5, adapt_y_axis = True):
-        """
-        RUN perform_solve_observed BEFORE.
-        plots probability  for each goal to each step (specified perform_solve_observed) in of obs_action_sequence
-        :param figsize_x: sets size of x-axis (steps)
-        :param figsize_y: sets size of y-axis (probability)
-        :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is True.
-        """
-        goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
-        probs_nrmlsd = []
-        for goal in goal_name:
-            probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
-        x = [step for step in range(1,len(self.steps_observed)+1)]
-        plt.figure(figsize = (figsize_x,figsize_y))
-        for i in range(len(probs_nrmlsd)):
-            plt.plot(x, probs_nrmlsd[i], label = goal_name[i])
-        plt.legend()
-        plt.xticks(range(1,len(self.steps_observed)+1))
-        plt.yticks([0,0.25,0.5,0.75,1])
-        plt.xlim(1,len(self.steps_observed))
-        if adapt_y_axis:
-            max_prob = 0
-            for step_dict in self.prob_nrmlsd_dict_list:
-                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
-            if max_prob_step > max_prob:
-                max_prob = max_prob_step
-            ticks = np.array([0,0.25,0.5,0.75,1])
-            plt.ylim(np.min(ticks[max_prob > ticks]), np.min(ticks[max_prob < ticks]))
-        else:
-            plt.ylim(0, 1)
-        plt.grid()
-        plt.show()
-
+    def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
+        return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
@@ -430,6 +352,7 @@ if __name__ == '__main__':
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
     model.perform_solve_optimal()
+    print(model.steps_optimal.plan)
     model.perform_solve_observed()
     print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
