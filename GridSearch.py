@@ -1,6 +1,7 @@
 import pickle
 import pandas as pd
 import numpy as np
+import gr_model
 import datetime as dt
 import itertools
 import prap_model
@@ -32,16 +33,19 @@ def load_gridsearch(file):
 class GridSearch:
     """
     Class that performs a GridSearch to a goal recognition model.
-    A goal recognition model can be of type prap_model or gm_model.
+    A goal recognition model can as of now be of type prap_model or gm_model.
     """
-    def __init__(self, model_root, name, planner = "ff_2_1"):
+    #def __init__(self, model_root, name, planner = "ff_2_1"):
+    def __init__(self,domain_root, goal_list, obs_action_sequence, name, planner = "ff_2_1"):
         """
-        :param model_root: model for goal_recognition.
+        :param domain_root: pddl_domain on which the goal recognition problem is solved.
+        :param goal_list: list of pddl_problems, which represent the goals to assign probabilites to.
+        :param obs_action_sequence: agents observations of type _pddl_observations.
         :param name: name for Gridsearch-object, created directories and files contain this name.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1).
         """
-        self.model_root = model_root
-        self.model_type = type(self.model_root)
+        self.model_root = gr_model.gr_model(domain_root = domain_root, goal_list =  goal_list,
+                                            obs_action_sequence = obs_action_sequence)
         self.model_list = []
         self.name = name
         self.planner = planner
@@ -62,10 +66,7 @@ class GridSearch:
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
         download = pd.read_sql_query(query, db_gr)
         db_gr.close()
-        if type(self.model_root) == prap_model:
-            domain = copy(self.model_root.domain_list[0])
-        elif type(self.model_root) == gm_model:
-            domain = copy(self.model_root.domain_root)
+        domain = copy(self.model_root.domain_root)
         action_list = list(domain.action_dict.keys())
         action_list.sort()
         i = 0
@@ -94,10 +95,7 @@ class GridSearch:
             except:
                 print("grid.expanded not yet created")
                 return None
-        if type(self.model_root) == prap_model:
-            domain = copy(self.model_root.domain_list[0])
-        elif type(self.model_root) == gm_model:
-            domain = copy(self.model_root.domain_root)
+        domain = copy(self.model_root.domain_root)
         action_list = list(domain.action_dict.keys())
         action_list.sort()
         for action in action_list:
@@ -175,10 +173,7 @@ class GridSearch:
         df_action_costs["config"] = [self.name + "_baseline"]
         df_action_costs["optimal_feasible"] = np.nan
         df_action_costs["seconds"] = np.nan
-        if type(self.model_root) == prap_model:
-            domain_root = self.model_root.domain_list[0]
-        elif type(self.model_root) == gm_model:
-            domain_root = self.model_root.domain_root
+        domain_root = self.model_root.domain_root
         for key in domain_root.action_dict.keys():
             df_action_costs[key] = [domain_root.action_dict[key].action_cost]
         return df_action_costs
@@ -239,10 +234,7 @@ class GridSearch:
                 self.grid = self.grid.reset_index().iloc[:, 1:]
     def _create_domain_config(self, idx, model_list_type = 1):
         #model_list_type == 1: model_list, == 2: model_reduce_cur, model_list_type == 3: model_list_expanded
-        if type(self.model_root) == prap_model:
-            domain = copy(self.model_root.domain_list[0])
-        elif type(self.model_root) == gm_model:
-            domain = copy(self.model_root.domain_root)
+        domain = copy(self.model_root.domain_root)
         if model_list_type == 1:
             config_idx = self.grid.iloc[idx, :]
         if model_list_type == 2 or model_list_type == 3:
@@ -267,18 +259,18 @@ class GridSearch:
         if model_list_type == 1:
             with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
-            self.model_list.append(self.model_type(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+            self.model_list.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
                                           self.goal_list_path, self.model_root.observation, planner = self.planner))
         elif model_list_type == 2:
             with open(self.path_reduce + config_idx["config"] + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
-            self.model_reduce_cur = self.model_type(pddl_domain(self.path_reduce + config_idx["config"] + ".pddl"),
+            self.model_reduce_cur = gr_model.gr_model(pddl_domain(self.path_reduce + config_idx["config"] + ".pddl"),
                                                     self.goal_list_path, self.model_root.observation,
                                                     planner=self.planner)
         if model_list_type == 3:
             with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
-            self.model_list_expanded.append(self.model_type(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+            self.model_list_expanded.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
                                                    self.goal_list_path, self.model_root.observation,
                                                    planner=self.planner))
     def _remove_model_domain_config(self, i=0, type_grid=1):
@@ -288,10 +280,7 @@ class GridSearch:
             model_remove = self.model_reduce_cur
         elif type_grid == 3:
             model_remove = self.model_list_expanded[i]
-        if type(model_remove) == prap_model:
-            file_remove = model_remove.domain_list[0].domain_path
-        elif type(model_remove) == gm_model:
-            file_remove = model_remove.domain_root.domain_path
+        file_remove = model_remove.domain_root.domain_path
         os.remove(file_remove)
         if type_grid == 1:
             self.model_list.remove(model_remove)
@@ -342,10 +331,7 @@ class GridSearch:
         self.grid_expanded["config"] = self.grid_expanded["config"].str.replace("config", "reduce")
         t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
         t.start()
-        if type(self.model_root) == prap_model:
-            domain_root = self.model_root.domain_list[0]
-        elif type(self.model_root) == gm_model:
-            domain_root = self.model_root.domain_root
+        domain_root = self.model_root.domain_root
         domain = copy(domain_root)
         path_pcs = domain.domain_path.split("/")
         path = ""
@@ -366,10 +352,7 @@ class GridSearch:
             print("-------------------")
             necessary_actions = []
             self._create_domain_config(idx, model_list_type = 2)
-            if type(self.model_reduce_cur) == prap_model:
-                cur_idx_config = self.model_reduce_cur.domain_list[0].domain_path.split("/")[-1]
-            elif type(self.model_reduce_cur) == gm_model:
-                cur_idx_config = self.model_reduce_cur.domain_root.domain_path.split("/")[-1]
+            cur_idx_config = self.model_reduce_cur.domain_root.domain_path.split("/")[-1]
             cols_grid_exp = [col for col in self.grid_expanded.columns if col not in ["config", "optimal_feasible",
                                                                                       "seconds"]]
             rel_cols_grid_exp = []
@@ -499,10 +482,7 @@ class GridSearch:
         RUN METHOD reduce_feasible_configs BEFORE! Keeps reduced grid_items from before.
         :param size: specifies the amount of configurations added to grid_expanded
         """
-        if type(self.model_root) == prap_model:
-            domain_root = self.model_root.domain_list[0]
-        elif type(self.model_root) == gm_model:
-            domain_root = self.model_root.domain_root
+        domain_root = self.model_root.domain_root
         domain = copy(domain_root)
         name_config = domain.domain_path.split("/")[-1]
         name_config +=  "_reduce_config_"
@@ -567,10 +547,7 @@ class GridSearch:
             model_list = self.model_list_expanded
         t = threading.Thread(target=self._monitor_temperature_mean, args=[celsius_stop, cool_down_time, update_time])
         t.start()
-        if type(self.model_root) == prap_model:
-            domain_root = self.model_root.domain_list[0]
-        elif type(self.model_root) == gm_model:
-            domain_root = self.model_root.domain_root
+        domain_root = self.model_root.domain_root
         domain = copy(domain_root)
         path_pcs = domain.domain_path.split("/")
         path = ""
@@ -609,10 +586,7 @@ class GridSearch:
                 self._create_domain_config(idx, model_list_type = 1)
             elif grid_type == 2:
                 self._create_domain_config(idx, model_list_type=3)
-            if type(self.model_root) == prap_model:
-                print(model_list[i].domain_list[0].domain_path.split("/")[-1])
-            elif type(self.model_root) == gm_model:
-                print(model_list[i].domain_root.domain_path.split("/")[-1])
+            print(model_list[i].domain_root.domain_path.split("/")[-1])
             # print([self.model_list[i].domain_list[0].action_dict[key].action_cost for key in self.model_list[-1].domain_list[0].action_dict.keys()])
             time.sleep(1)  # remove pending tasks from cpu
             while (max(psutil.cpu_percent(percpu=True)) > 30):
@@ -666,14 +640,9 @@ class GridSearch:
                     self._remove_model_domain_config(i)
                 elif grid_type == 2:
                     self._remove_model_domain_config(i, type_grid=3)
-        if type(self.model_root) == prap_model:
-            for action in self.model_root.domain_list[0].action_dict.keys():
-                new_cost = grid.iloc[0, :][action]
-                self.model_root.domain_list[0].action_dict[action].set_action_cost(new_cost)
-        elif type(self.model_root) == gm_model:
-            for action in self.model_root.domain_root.action_dict.keys():
-                new_cost = grid.iloc[0, :][action]
-                self.model_root.domain_root.action_dict[action].set_action_cost(new_cost)
+        for action in self.model_root.domain_root.action_dict.keys():
+            new_cost = grid.iloc[0, :][action]
+            self.model_root.domain_root.action_dict[action].set_action_cost(new_cost)
         self.temperature_control = False
         if pickle:
             save_gridsearch(self)
@@ -776,7 +745,6 @@ class GridSearch:
                 self.grid_result_not_unique[i].append(data)
                 j += 1
 if __name__ == '__main__':
-    """
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')
     problem_b = pddl_problem('problem_B.pddl')
@@ -786,26 +754,11 @@ if __name__ == '__main__':
     problem_f = pddl_problem('problem_F.pddl')
     toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
     obs_toy_example = pddl_observations('Observations.csv')
-    model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    #model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    gs = GridSearch(model, "toy_example_gs")
+    gs = GridSearch(toy_example_domain, toy_example_problem_list, obs_toy_example,"toy_example_gs")
     gs.add_grid_item([("MOVE_LEFT_FROM", range(5, 10))])
     gs.add_grid_item(("MOVE_RIGHT_FROM", range(100, 200)))
     gs.add_grid_item(("MOVE_DOWN_FROM", range(200, 3000)))
     gs.add_grid_item(("MOVE_LOWER_RIGHT_FROM", range(50, 60)))
     gs.add_grid_item(("MOVE_LOWER_LEFT_FROM", range(50, 60)))
     gs.create_grid(random=True, size=4)
-    gs.check_feasible_domain(multiprocess=True, timeout= 5, keep_files = True, pickle = False)
-    print(gs.grid)#"""
-
-    """
-    gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
-    print(gs.hash_code)
-    gs.reset_grid_expanded()
-    gs.expand_grid(size = 300)
-    gs.check_feasible_domain(grid_type = 2, keep_files=True, timeout=90, pickle=True)
-    """
-
-
-    gs = load_gridsearch("/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_7_mod_wo_books_label/model_7_mod_wo_books_label.pickle")
-    f = gs.load_db_grid()
+    gs.check_feasible_domain(multiprocess=True, timeout=5, keep_files=True, pickle=False)
