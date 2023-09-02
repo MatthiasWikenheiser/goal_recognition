@@ -264,6 +264,7 @@ class gm_model(gr_model.gr_model):
                 path_domain = self.domain_temp.domain_path
                 os.remove(path_domain)
                 os.remove(path + f"/{self.planner}")
+                [os.remove(f) for f in os.listdir(path)]
                 os.rmdir(path)
 
     def _calc_prob(self, step=1):

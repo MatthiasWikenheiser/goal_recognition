@@ -143,7 +143,6 @@ class metric_ff_solver:
                         path = path + path_pc + "/"
                     files = []
                     achieved_goals = [key for key in list(self.mp_goal_computed.keys()) if self.mp_goal_computed[key].value == 1]
-                    print(achieved_goals)
                     for key in achieved_goals:
                         self.summary[key] = self.mp_output_goals[key].value.decode('ascii')
                         file_path = path + f"output_goal_{key}.txt"
@@ -160,14 +159,10 @@ class metric_ff_solver:
                             self.summary[key] = f.read()
                         self.plan[key] = self._legal_plan(self.summary[key], file_path)
                         self.plan_cost[key] = self._cost(self.summary[key], file_path)
-                        print("bla ", self.plan_cost[key])
                         self.plan_achieved[key] = self.mp_goal_computed[key].value
                         self.time[key] = self._time_2_solve(self.summary[key], file_path)
-                    print([x for x in os.listdir(self.domain_path) if "output_goal_" in x])
-                    [os.remove(x) for x in os.listdir(self.domain_path) if "output_goal_" in x]
-                    print([x for x in os.listdir(self.domain_path) if "output_goal_" in x])
+                        os.remove(file_path)
                     [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
-                    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
             path = ""
             for path_pc in self.domain_path.split("/")[:-1]:
                 path = path + path_pc +"/"
