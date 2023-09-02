@@ -68,7 +68,7 @@ class metric_ff_solver:
         for el in path[1:]:
             path_result = path_result + "/" + el
         return path_result
-    def solve(self, domain, problem, multiprocess = True, type_solver = '3', weight = '1', timeout = 90):
+    def solve(self, domain, problem, multiprocess = True, type_solver = '3', weight = '1', timeout = 90.0):
         """solves one or many pddl_problem(s), given a pddl_domain and provides a data structure for result outputs
         :param domain: pddl_domain object
         :param problem: one or many (list) pddl_problem objects
@@ -134,16 +134,40 @@ class metric_ff_solver:
             #j = 0
             start_time = time.time()
             while(len([x for x in psutil.process_iter() if self.planner in x.name()]) != 0):
-                #sleep(1)
-                #j += 1
-                #if j == timeout:
                 sleep(0.1)
                 if time.time() - start_time >= timeout:
                     self.solved = 2
-                    [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
-                    [os.remove(x) for x in os.listdir(self.domain_path) if "output_goal_" in x]
                     print("time_out finished")
-                    break
+                    path = ""
+                    for path_pc in self.domain_path.split("/")[:-1]:
+                        path = path + path_pc + "/"
+                    files = []
+                    achieved_goals = [key for key in list(self.mp_goal_computed.keys()) if self.mp_goal_computed[key].value == 1]
+                    print(achieved_goals)
+                    for key in achieved_goals:
+                        self.summary[key] = self.mp_output_goals[key].value.decode('ascii')
+                        file_path = path + f"output_goal_{key}.txt"
+                        files.append(file_path)
+                        if self.summary[key] == "":
+                            try_read = True
+                            while try_read:
+                                try:
+                                    f = open(file_path, "r")
+                                    try_read = False
+                                    time.sleep(0.5)
+                                except:
+                                    pass
+                            self.summary[key] = f.read()
+                        self.plan[key] = self._legal_plan(self.summary[key], file_path)
+                        self.plan_cost[key] = self._cost(self.summary[key], file_path)
+                        print("bla ", self.plan_cost[key])
+                        self.plan_achieved[key] = self.mp_goal_computed[key].value
+                        self.time[key] = self._time_2_solve(self.summary[key], file_path)
+                    print([x for x in os.listdir(self.domain_path) if "output_goal_" in x])
+                    [os.remove(x) for x in os.listdir(self.domain_path) if "output_goal_" in x]
+                    print([x for x in os.listdir(self.domain_path) if "output_goal_" in x])
+                    [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
+                    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
             path = ""
             for path_pc in self.domain_path.split("/")[:-1]:
                 path = path + path_pc +"/"

@@ -265,56 +265,62 @@ class gm_model(gr_model.gr_model):
                 os.remove(path_domain)
                 os.remove(path + f"/{self.planner}")
                 os.rmdir(path)
-    def _calc_prob(self, step = 1, priors= None):
+
+    def _calc_prob(self, step=1):
         if step == 0:
             print("step must be > 0 ")
             return None
-        if priors == None:
-            priors = np.array([1/len(self.goal_list[0]) for _ in range(len(self.goal_list[0]))])
-        else:
-            priors = np.array(priors)
+        keys = list(self.steps_observed[step - 1].plan_cost.keys())
         if self.at_goal is None:
-            optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
+            optimal_costs = [self.steps_optimal.plan_cost[key] for key in keys]
             optimal_costs = np.array(optimal_costs)
-            suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
+            suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
             suffix_costs = np.array(suffix_costs)
             p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
         else:
+            print("here ", self.at_goal.name)
             dict_last_step = {}
-            keys_not_at_goal = [key for key in list(self.steps_observed[-1].plan_cost.keys())]
+            keys_not_at_goal = keys
             optimal_costs = [self.steps_observed[-1].plan_cost[key] for key in keys_not_at_goal]
             optimal_costs = np.array(optimal_costs)
-            suffix_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
+            suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
             suffix_costs = np.array(suffix_costs)
             p_observed_help = optimal_costs / (self.cost_obs_cum + suffix_costs)
             for key in range(len(keys_not_at_goal)):
                 dict_last_step[keys_not_at_goal[key]] = p_observed_help[key]
             dict_last_step[self.at_goal.name] = self.steps_optimal.plan_cost[self.at_goal.name] / self.cost_obs_cum
+            print(dict_last_step)
             p_observed = []
-            for key in list(self.steps_optimal.plan_cost.keys()):
+            keys.append(self.at_goal.name)
+            for key in keys:
+                print(key)
                 p_observed.append(dict_last_step[key])
             p_observed = np.array(p_observed)
-        p_observed = np.round(p_observed,4)
+            print(p_observed)
+        p_observed = np.round(p_observed, 4)
         prob_dict = {}
         sum_probs = 0
         for i in range(len(p_observed)):
-            key = list(self.steps_optimal.plan_cost.keys())[i]
+            key = keys[i]
             prob_dict[key] = p_observed[i]
             sum_probs += p_observed[i]
         prob_normalised_dict = {}
         for i in range(len(p_observed)):
-            key = list(self.steps_optimal.plan_cost.keys())[i]
-            prob_normalised_dict[key] = (prob_dict[key]/sum_probs)
+            key = keys[i]
+            prob_normalised_dict[key] = (prob_dict[key] / sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
+        #for key in [key for key in list(self.steps_optimal.plan_cost.keys()) if key not in prob_normalised_dict.keys()]:
+         #   prob_dict[key] = 0
+          #  prob_normalised_dict[key] = 0
         return prob_dict, prob_normalised_dict
-    def perform_solve_observed(self, step = -1, priors = None, multiprocess = True):
+
+    def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
         from given obs_action_sequence.
         :param step: specifies how many observations in observation sequence get solved.
                      If set to -1 (default) entire observation sequence is solved
-        :param priors: priors of goal_list, default assigns equal probabilites to each goal
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
 
         UNDER CONSTRUCTION - set timeout to time in obs_action_sequence
@@ -324,13 +330,18 @@ class gm_model(gr_model.gr_model):
         if step == -1:
             step = self.observation.obs_len
         for i in range(step):
+            time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
-            print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
+            print("\nstep:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             self._add_step(i+1)
-            task = metric_ff_solver(planner = self.planner)
-            task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess)
+            print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
+            try:
+                task = metric_ff_solver(planner = self.planner)
+                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout=time_step)
+            except:
+                print("timeout")
             self.steps_observed.append(task)
-            result_probs = self._calc_prob(i + 1, priors)
+            result_probs = self._calc_prob(i + 1)
             self.prob_dict_list.append(result_probs[0])
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i+1] = self._predict_step(step= i)
@@ -352,7 +363,6 @@ if __name__ == '__main__':
     model = gm_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
     model.perform_solve_optimal()
-    print(model.steps_optimal.plan)
     model.perform_solve_observed()
     print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
