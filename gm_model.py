@@ -279,7 +279,6 @@ class gm_model(gr_model.gr_model):
             suffix_costs = np.array(suffix_costs)
             p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
         else:
-            print("here ", self.at_goal.name)
             dict_last_step = {}
             keys_not_at_goal = keys
             optimal_costs = [self.steps_observed[-1].plan_cost[key] for key in keys_not_at_goal]
@@ -290,14 +289,11 @@ class gm_model(gr_model.gr_model):
             for key in range(len(keys_not_at_goal)):
                 dict_last_step[keys_not_at_goal[key]] = p_observed_help[key]
             dict_last_step[self.at_goal.name] = self.steps_optimal.plan_cost[self.at_goal.name] / self.cost_obs_cum
-            print(dict_last_step)
             p_observed = []
             keys.append(self.at_goal.name)
             for key in keys:
-                print(key)
                 p_observed.append(dict_last_step[key])
             p_observed = np.array(p_observed)
-            print(p_observed)
         p_observed = np.round(p_observed, 4)
         prob_dict = {}
         sum_probs = 0
@@ -310,9 +306,6 @@ class gm_model(gr_model.gr_model):
             key = keys[i]
             prob_normalised_dict[key] = (prob_dict[key] / sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
-        #for key in [key for key in list(self.steps_optimal.plan_cost.keys()) if key not in prob_normalised_dict.keys()]:
-         #   prob_dict[key] = 0
-          #  prob_normalised_dict[key] = 0
         return prob_dict, prob_normalised_dict
 
     def perform_solve_observed(self, step = -1, multiprocess = True):
@@ -343,6 +336,10 @@ class gm_model(gr_model.gr_model):
                 print("timeout")
             self.steps_observed.append(task)
             result_probs = self._calc_prob(i + 1)
+            for g in self.goal_list[i+1]:
+                if g.name not in result_probs[0].keys():
+                    result_probs[0][g.name] = 0.00
+                    result_probs[1][g.name] = 0.00
             self.prob_dict_list.append(result_probs[0])
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i+1] = self._predict_step(step= i)
