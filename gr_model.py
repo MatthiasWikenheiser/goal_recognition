@@ -5,6 +5,7 @@ import pickle
 import time
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
     with open(path + filename, "wb") as outp:
@@ -80,13 +81,18 @@ class gr_model:
         :param adapt_y_axis: if True plot zooms in into necessary range of [0,0.25,0.5,0.75,1]. Default is False.
         """
         goal_name = [self.goal_list[0][i].name for i in range(len(self.goal_list[0]))]
-        probs_nrmlsd = []
-        for goal in goal_name:
-            probs_nrmlsd.append([self.prob_nrmlsd_dict_list[step][goal] for step in range(len(self.steps_observed))])
-        x = [step for step in range(1, len(self.steps_observed) + 1)]
+        df = pd.DataFrame()
+        for step in range(len(self.prob_nrmlsd_dict_list)):
+            cur_df = {}
+            cur_df["step"] = [step + 1]
+            for key in self.prob_nrmlsd_dict_list[step].keys():
+                cur_df[key] = [self.prob_nrmlsd_dict_list[step][key]]
+            df_step = pd.DataFrame(cur_df)
+            df = pd.concat([df, df_step])
+        df = df.reset_index().iloc[:, 1:]
         plt.figure(figsize=(figsize_x, figsize_y))
-        for i in range(len(probs_nrmlsd)):
-            plt.plot(x, probs_nrmlsd[i], label=goal_name[i])
+        for goal in goal_name:
+            plt.plot(df["step"], df[goal], label=goal)
         plt.legend()
         plt.xticks(range(1, len(self.steps_observed) + 1))
         plt.yticks([0, 0.25, 0.5, 0.75, 1])
@@ -94,7 +100,8 @@ class gr_model:
         if adapt_y_axis:
             max_prob = 0
             for step_dict in self.prob_nrmlsd_dict_list:
-                max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
+                #max_prob_step = max([step_dict[key] for key in list(step_dict.keys())])
+                max_prob_step = max(df[[x for x in df.columns if x != "step"]].max())
             if max_prob_step > max_prob:
                 max_prob = max_prob_step
             ticks = np.array([0, 0.25, 0.5, 0.75, 1])
@@ -103,7 +110,6 @@ class gr_model:
             plt.ylim(0, 1)
         plt.grid()
         plt.show()
-
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
     problem_a = pddl_problem('problem_A.pddl')

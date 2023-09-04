@@ -156,7 +156,7 @@ class gm_model(gr_model.gr_model):
         _, effects = self._recursive_effect_check(parse_string, zipped_parameters)
         return [effect for effect in effects if effect != "_"]
     def _create_obs_goal(self, goal_idx = 0, step = 1):
-        goal = self.goal_list[0][goal_idx]
+        goal = self.goal_list[-1][goal_idx]
         new_goal = f"(define (problem {goal.name})\n"
         new_goal = new_goal + f"(:domain {self.domain_root.name})"
         new_goal = new_goal + "\n(:objects)"
@@ -237,17 +237,19 @@ class gm_model(gr_model.gr_model):
                new_domain.write(domain_string)
             self.domain_temp = pddl_domain(path + "/domain_gm_model.pddl")
         new_goal_list = []
-        for goal in range(len(self.goal_list[0])):
+
+        for goal in range(len(self.goal_list[-1])):
             add_problem = True
             goal_string = self._create_obs_goal(goal, step)
             with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
                 new_goal.write(goal_string)
-            if last_step:
-                check = pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl")
-                if len([f for f in check.goal_fluents if f in check.start_fluents]) == len(check.goal_fluents):
-                    self.at_goal = check
-                    os.remove(check.problem_path)
-                    add_problem = False
+            #if last_step:
+            check = pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl")
+            if len([f for f in check.goal_fluents if f in check.start_fluents]) == len(check.goal_fluents):
+                self.at_goal = check
+                print(f"-----------at---------{self.at_goal.name}-----------")
+                os.remove(check.problem_path)
+                add_problem = False
             if add_problem:
                 new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
         self.goal_list.append(new_goal_list)
@@ -266,34 +268,16 @@ class gm_model(gr_model.gr_model):
                 os.remove(path + f"/{self.planner}")
                 [os.remove(f) for f in os.listdir(path)]
                 os.rmdir(path)
-
     def _calc_prob(self, step=1):
         if step == 0:
             print("step must be > 0 ")
             return None
         keys = list(self.steps_observed[step - 1].plan_cost.keys())
-        if self.at_goal is None:
-            optimal_costs = [self.steps_optimal.plan_cost[key] for key in keys]
-            optimal_costs = np.array(optimal_costs)
-            suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
-            suffix_costs = np.array(suffix_costs)
-            p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
-        else:
-            dict_last_step = {}
-            keys_not_at_goal = keys
-            optimal_costs = [self.steps_observed[-1].plan_cost[key] for key in keys_not_at_goal]
-            optimal_costs = np.array(optimal_costs)
-            suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
-            suffix_costs = np.array(suffix_costs)
-            p_observed_help = optimal_costs / (self.cost_obs_cum + suffix_costs)
-            for key in range(len(keys_not_at_goal)):
-                dict_last_step[keys_not_at_goal[key]] = p_observed_help[key]
-            dict_last_step[self.at_goal.name] = self.steps_optimal.plan_cost[self.at_goal.name] / self.cost_obs_cum
-            p_observed = []
-            keys.append(self.at_goal.name)
-            for key in keys:
-                p_observed.append(dict_last_step[key])
-            p_observed = np.array(p_observed)
+        optimal_costs = [self.steps_optimal.plan_cost[key] for key in keys]
+        optimal_costs = np.array(optimal_costs)
+        suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
+        suffix_costs = np.array(suffix_costs)
+        p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
         p_observed = np.round(p_observed, 4)
         prob_dict = {}
         sum_probs = 0
@@ -331,7 +315,7 @@ class gm_model(gr_model.gr_model):
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
                 task = metric_ff_solver(planner = self.planner)
-                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout=time_step)
+                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= max(10,time_step))
             except:
                 print("timeout")
             self.steps_observed.append(task)
