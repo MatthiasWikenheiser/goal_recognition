@@ -188,6 +188,7 @@ class gm_model(gr_model.gr_model):
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
+        print(effects)
         functions = [function[1:-1] for function in domain.functions]
         new_start_fluents = goal.start_fluents
         for effect in effects:
@@ -315,7 +316,7 @@ class gm_model(gr_model.gr_model):
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
                 task = metric_ff_solver(planner = self.planner)
-                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= max(10,time_step))
+                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= max(5,time_step))
             except:
                 print("timeout")
             self.steps_observed.append(task)
@@ -328,8 +329,8 @@ class gm_model(gr_model.gr_model):
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i+1] = self._predict_step(step= i)
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        for i in range(step,0,-1):
-            self._remove_step(i)
+        #for i in range(step,0,-1):
+            #self._remove_step(i)
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
