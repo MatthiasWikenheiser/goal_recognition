@@ -361,7 +361,8 @@ class pddl_observations:
     """"data structure for observations of an agent which aligns to a pddl_domain
     UNDER construction"""
     def __init__(self, csv_file):
-        self.obs_file = pd.read_csv(csv_file)
+        self.observation_path = csv_file
+        self.obs_file = pd.read_csv(self.observation_path)
         self.obs_len = len(self.obs_file)
         self.obs_action_sequence = self.obs_file["action"]
     def partial_action_sequence(self, sequence_length = None):

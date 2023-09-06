@@ -23,9 +23,11 @@ class gr_model:
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
         self.domain_root = domain_root
+        self.crystal_island = domain_root.name == "crystal_island"
+        self.observation = obs_action_sequence
+        self.crystal_island_solution = self._crystal_island_solution()
         self.goal_list = [goal_list]
         self.planner = planner
-        self.observation = obs_action_sequence
         self.steps_observed = []
         self.prob_dict_list = []
         self.prob_nrmlsd_dict_list = []
@@ -33,6 +35,27 @@ class gr_model:
         self.mp_seconds = None
         self.predicted_step = {}
         self.hash_code = self._create_hash_code()
+    def _crystal_island_solution(self):
+        if self.crystal_island:
+            file_name_obs = self.observation.observation_path.split("/")[-1]
+            change_domain = ""
+            for split_element in self.domain_root.domain_path.split("/")[:-1]:
+                change_domain += split_element + "/"
+            if "_E.coli" in file_name_obs:
+                solution = "ecoli"
+                new_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl", "_ecoli.pddl")
+                change_domain += new_domain
+                self.domain_root = pddl_domain(change_domain)
+            elif "_Salmonellosis" in file_name_obs:
+                solution =  "salmonellosis"
+                new_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl", "_salmonellosis.pddl")
+                change_domain += new_domain
+                self.domain_root = pddl_domain(change_domain)
+            else:
+                solution =  None #domain remains on default (salmonellosis)
+        else:
+            solution =  None
+        return solution
     def _create_hash_code(self):
         action_list = list(self.domain_root.action_dict.keys())
         action_list.sort()
