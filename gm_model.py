@@ -6,6 +6,7 @@ import os
 import shutil
 import time
 import numpy as np
+import psutil
 import matplotlib.pyplot as plt
 import hashlib
 class gm_model(gr_model.gr_model):
@@ -308,7 +309,8 @@ class gm_model(gr_model.gr_model):
         start_time = time.time()
         if step == -1:
             step = self.observation.obs_len
-        for i in range(step):
+        i = 0
+        while i < step:
             time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
             print("\nstep:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
@@ -316,21 +318,47 @@ class gm_model(gr_model.gr_model):
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
                 task = metric_ff_solver(planner = self.planner)
-                task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= max(5,time_step))
+                time_step = 5
+                if len(self.goal_list[i+1]) > 0:
+                    task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= time_step)
             except:
-                print("timeout")
-            self.steps_observed.append(task)
-            result_probs = self._calc_prob(i + 1)
-            for g in self.goal_list[i+1]:
-                if g.name not in result_probs[0].keys():
-                    result_probs[0][g.name] = 0.00
-                    result_probs[1][g.name] = 0.00
-            self.prob_dict_list.append(result_probs[0])
-            self.prob_nrmlsd_dict_list.append(result_probs[1])
-            self.predicted_step[i+1] = self._predict_step(step= i)
+                print(task.solved)
+                pass
+            check_restart_t = time.time()
+            restart = False
+            s = 15
+
+
+            while (task.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(self.goal_list[i+1]) > 0):
+                print("task.solved: ",task.solved )
+                print("time.time() - check_restart_t: ", time.time() - check_restart_t)
+                print("time_step + 10: ", time_step + 10)
+                print(len(self.goal_list[i+1]) )
+                if (time.time() - check_restart_t > time_step):
+                    print("timeout reached")
+                    print("continue in ", s)
+                    s -= 1
+                    restart = True
+                time.sleep(1)
+
+            if not restart:
+                self.steps_observed.append(task)
+                result_probs = self._calc_prob(i + 1)
+                for g in self.goal_list[i+1]:
+                    if g.name not in result_probs[0].keys():
+                        result_probs[0][g.name] = 0.00
+                        result_probs[1][g.name] = 0.00
+                self.prob_dict_list.append(result_probs[0])
+                self.prob_nrmlsd_dict_list.append(result_probs[1])
+                self.predicted_step[i+1] = self._predict_step(step= i)
+            else:
+                [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                print(restart)
+                i -= 1
+            i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        #for i in range(step,0,-1):
-            #self._remove_step(i)
+        for i in range(step,0,-1):
+            self._remove_step(i)
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
