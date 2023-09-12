@@ -1,5 +1,6 @@
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
+import threading
 import gr_model
 import re
 import os
@@ -222,7 +223,12 @@ class gm_model(gr_model.gr_model):
                     new_start_fluents[remember_index] = effect
                 else:
                     new_start_fluents.append(effect)
-        return [fl for fl in new_start_fluents if "(not(" not in fl]
+            remove_not_fluents = [fl for fl in new_start_fluents if "(not(" not in fl]
+            result_fluents = []
+            for fl in remove_not_fluents:
+                if fl not in result_fluents:
+                    result_fluents.append(fl)
+        return result_fluents
     def _clean_effect(self, effect):
         left_bracket_clean = re.sub("\s*\(\s*", "(", effect)
         right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
@@ -256,6 +262,8 @@ class gm_model(gr_model.gr_model):
                 new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
         self.goal_list.append(new_goal_list)
         if step == 1:
+            print(self.planner)
+            print(path + f'/{self.planner}')
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
     def _remove_step(self, step = 1):
         path = self.domain_temp.domain_path.replace(self.domain_temp.domain_path.split("/")[-1],"")
@@ -293,7 +301,10 @@ class gm_model(gr_model.gr_model):
             prob_normalised_dict[key] = (prob_dict[key] / sum_probs)
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
-
+    def _thread_solve(self, i, multiprocess, time_step):
+        self.task_thread_solve = metric_ff_solver(planner=self.planner)
+        if len(self.goal_list[i + 1]) > 0:
+            self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess, timeout=time_step)
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -317,32 +328,35 @@ class gm_model(gr_model.gr_model):
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
-                task = metric_ff_solver(planner = self.planner)
                 time_step = 5
-                if len(self.goal_list[i+1]) > 0:
-                    task.solve(self.domain_temp,self.goal_list[i+1], multiprocess = multiprocess,timeout= time_step)
+                t = threading.Thread(target=self._thread_solve,
+                                     args=[i, multiprocess, time_step])
+                t.start()
             except:
-                print(task.solved)
                 pass
             check_restart_t = time.time()
             restart = False
             s = 15
 
-
-            while (task.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(self.goal_list[i+1]) > 0):
-                print("task.solved: ",task.solved )
-                print("time.time() - check_restart_t: ", time.time() - check_restart_t)
-                print("time_step + 10: ", time_step + 10)
-                print(len(self.goal_list[i+1]) )
-                if (time.time() - check_restart_t > time_step):
+            background_loop = True
+            while background_loop:
+                time.sleep(0.5)
+                print("task.solved: ",self.task_thread_solve.solved )
+                #print("time.time() - check_restart_t: ", time.time() - check_restart_t)
+                #print("time_step + 10: ", time_step + 10)
+                #print("len(self.goal_list[i+1]): " , len(self.goal_list[i+1]) )
+                if not (self.task_thread_solve.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(
+                    self.goal_list[i + 1]) > 0):
+                    background_loop = False
+                if (time.time() - check_restart_t > time_step + 10):
                     print("timeout reached")
                     print("continue in ", s)
                     s -= 1
                     restart = True
-                time.sleep(1)
+
 
             if not restart:
-                self.steps_observed.append(task)
+                self.steps_observed.append(self.task_thread_solve)
                 result_probs = self._calc_prob(i + 1)
                 for g in self.goal_list[i+1]:
                     if g.name not in result_probs[0].keys():
@@ -353,12 +367,13 @@ class gm_model(gr_model.gr_model):
                 self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                self._remove_step(i+1)
                 print(restart)
                 i -= 1
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        for i in range(step,0,-1):
-            self._remove_step(i)
+        #for i in range(step,0,-1):
+            #self._remove_step(i)
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
