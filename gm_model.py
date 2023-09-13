@@ -191,7 +191,6 @@ class gm_model(gr_model.gr_model):
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
-        print(goal.problem_path)
         print("effects: ", effects)
         functions = [function[1:-1] for function in domain.functions]
         new_start_fluents = [x for x in goal.start_fluents] # = would lead to pointer identity
@@ -264,15 +263,12 @@ class gm_model(gr_model.gr_model):
                 new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
         self.goal_list.append(new_goal_list)
         if step == 1:
-            print(self.planner)
-            print(path + f'/{self.planner}')
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
     def _remove_step(self, step = 1):
         path = self.domain_temp.domain_path.replace(self.domain_temp.domain_path.split("/")[-1],"")
         if os.path.exists(path):
             path_goal = [x.problem_path for x in self.goal_list[step]]
             self.goal_list = self.goal_list[0:step]
-            print(self.goal_list[-1][0].problem_path)
             for goal in path_goal:
                 os.remove(goal)
             if step == 1:
@@ -344,10 +340,7 @@ class gm_model(gr_model.gr_model):
             background_loop = True
             while background_loop:
                 time.sleep(0.5)
-                print("task.solved: ",self.task_thread_solve.solved )
-                #print("time.time() - check_restart_t: ", time.time() - check_restart_t)
-                #print("time_step + 10: ", time_step + 10)
-                #print("len(self.goal_list[i+1]): " , len(self.goal_list[i+1]) )
+                #print("task.solved: ",self.task_thread_solve.solved )
                 if not (self.task_thread_solve.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(
                     self.goal_list[i + 1]) > 0):
                     background_loop = False
@@ -370,10 +363,8 @@ class gm_model(gr_model.gr_model):
                 self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                print(i)
                 self._remove_step(i+1)
                 time.sleep(20)
-                print(restart)
                 i -= 1
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
