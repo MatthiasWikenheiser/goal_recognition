@@ -179,7 +179,8 @@ class gm_model(gr_model.gr_model):
     def _create_new_start_fluents(self, goal_idx, step = 1):
         action_step = self.observation.obs_action_sequence.loc[step-1]
         action_title = action_step.split(" ")[0]
-        goal = self.goal_list[step-1][goal_idx]
+        goal = self.goal_list[step-1][goal_idx] #some unkown bug
+        #goal = pddl_problem(self.goal_list[step-1][goal_idx].problem_path)
         if len(action_step.split(" ")) > 1:
             action_objects = action_step.split(" ")[1:]
         else:
@@ -190,9 +191,10 @@ class gm_model(gr_model.gr_model):
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
-        print(effects)
+        print(goal.problem_path)
+        print("effects: ", effects)
         functions = [function[1:-1] for function in domain.functions]
-        new_start_fluents = goal.start_fluents
+        new_start_fluents = [x for x in goal.start_fluents] # = would lead to pointer identity
         for effect in effects:
             effect_is_func = len([function for function in functions if function in effect]) > 0
             if effect_is_func:
@@ -270,6 +272,7 @@ class gm_model(gr_model.gr_model):
         if os.path.exists(path):
             path_goal = [x.problem_path for x in self.goal_list[step]]
             self.goal_list = self.goal_list[0:step]
+            print(self.goal_list[-1][0].problem_path)
             for goal in path_goal:
                 os.remove(goal)
             if step == 1:
@@ -328,7 +331,7 @@ class gm_model(gr_model.gr_model):
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
-                time_step = 5
+                time_step = 2
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
@@ -367,7 +370,9 @@ class gm_model(gr_model.gr_model):
                 self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                print(i)
                 self._remove_step(i+1)
+                time.sleep(20)
                 print(restart)
                 i -= 1
             i += 1
