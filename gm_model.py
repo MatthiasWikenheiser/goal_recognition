@@ -327,7 +327,7 @@ class gm_model(gr_model.gr_model):
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
-                time_step = 2
+                time_step = 5
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
@@ -349,8 +349,6 @@ class gm_model(gr_model.gr_model):
                     print("continue in ", s)
                     s -= 1
                     restart = True
-
-
             if not restart:
                 self.steps_observed.append(self.task_thread_solve)
                 result_probs = self._calc_prob(i + 1)
@@ -364,7 +362,7 @@ class gm_model(gr_model.gr_model):
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 self._remove_step(i+1)
-                time.sleep(20)
+                #time.sleep(20)
                 i -= 1
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
