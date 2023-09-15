@@ -191,7 +191,7 @@ class gm_model(gr_model.gr_model):
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
-        print("effects: ", effects)
+        #print("effects: ", effects)
         functions = [function[1:-1] for function in domain.functions]
         new_start_fluents = [x for x in goal.start_fluents] # = would lead to pointer identity
         for effect in effects:
@@ -301,6 +301,7 @@ class gm_model(gr_model.gr_model):
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
     def _thread_solve(self, i, multiprocess, time_step):
+        print([goal.problem_path for goal in self.goal_list[i + 1]])
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
             self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess, timeout=time_step)
@@ -320,6 +321,7 @@ class gm_model(gr_model.gr_model):
         if step == -1:
             step = self.observation.obs_len
         i = 0
+        restart_count = 0
         while i < step:
             time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
@@ -327,7 +329,7 @@ class gm_model(gr_model.gr_model):
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
-                time_step = 5
+                time_step = 3
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
@@ -335,19 +337,22 @@ class gm_model(gr_model.gr_model):
                 pass
             check_restart_t = time.time()
             restart = False
-            s = 15
-
             background_loop = True
+            s = 10
             while background_loop:
                 time.sleep(0.5)
                 #print("task.solved: ",self.task_thread_solve.solved )
                 if not (self.task_thread_solve.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(
                     self.goal_list[i + 1]) > 0):
                     background_loop = False
-                if (time.time() - check_restart_t > time_step + 10):
+                    time.sleep(1)
+                if (time.time() - check_restart_t >= time_step + 10):
                     print("timeout reached")
-                    print("continue in ", s)
-                    s -= 1
+                    while s > 0:
+                        print("continue in ", s)
+                        s -= 1
+                        time.sleep(1)
+                        [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                     restart = True
             if not restart:
                 self.steps_observed.append(self.task_thread_solve)
@@ -361,9 +366,13 @@ class gm_model(gr_model.gr_model):
                 self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                self._remove_step(i+1)
-                #time.sleep(20)
-                i -= 1
+                restart_count += 1
+                if restart_count<2:
+                    self._remove_step(i + 1)
+                    i -= 1
+                else:
+                    print("restart_failed")
+                    restart_count = 0
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         #for i in range(step,0,-1):

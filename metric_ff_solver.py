@@ -185,6 +185,7 @@ class metric_ff_solver:
                 [os.remove(fp) for fp in files]
     def _run_metric_ff_mp(self, domain, problem, i, key):
         command_string = f"./{self.planner} -o {domain} -f {problem} -s {self.type_solver} -w {self.weight}"
+        print(command_string)
         path = ""
         for path_pc in domain.split("/")[:-1]:
             path = path + path_pc +"/"
