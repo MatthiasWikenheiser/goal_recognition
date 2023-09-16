@@ -301,7 +301,7 @@ class gm_model(gr_model.gr_model):
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
     def _thread_solve(self, i, multiprocess, time_step):
-        print([goal.problem_path for goal in self.goal_list[i + 1]])
+        #print([goal.problem_path for goal in self.goal_list[i + 1]])
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
             self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess, timeout=time_step)
@@ -321,7 +321,6 @@ class gm_model(gr_model.gr_model):
         if step == -1:
             step = self.observation.obs_len
         i = 0
-        restart_count = 0
         while i < step:
             time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
@@ -335,26 +334,26 @@ class gm_model(gr_model.gr_model):
                 t.start()
             except:
                 pass
-            check_restart_t = time.time()
-            restart = False
+            check_failure_t = time.time()
+            failure = False
             background_loop = True
-            s = 10
+            s = 3
             while background_loop:
                 time.sleep(0.5)
                 #print("task.solved: ",self.task_thread_solve.solved )
-                if not (self.task_thread_solve.solved == 0 and (time.time() - check_restart_t <= time_step + 10) and len(
+                if not (self.task_thread_solve.solved == 0 and (time.time() - check_failure_t <= time_step + 10) and len(
                     self.goal_list[i + 1]) > 0):
                     background_loop = False
                     time.sleep(1)
-                if (time.time() - check_restart_t >= time_step + 10):
+                if (time.time() - check_failure_t >= time_step + 10):
                     print("timeout reached")
                     while s > 0:
                         print("continue in ", s)
                         s -= 1
                         time.sleep(1)
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                    restart = True
-            if not restart:
+                    failure = True
+            if not failure:
                 self.steps_observed.append(self.task_thread_solve)
                 result_probs = self._calc_prob(i + 1)
                 for g in self.goal_list[i+1]:
@@ -366,17 +365,43 @@ class gm_model(gr_model.gr_model):
                 self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                restart_count += 1
-                if restart_count<2:
-                    self._remove_step(i + 1)
-                    i -= 1
-                else:
-                    print("restart_failed")
-                    restart_count = 0
+                print("failure, read in files ")
+                failure_task = metric_ff_solver()
+                failure_task.problem = self.goal_list[i + 1]
+                failure_task.domain = self.domain_temp
+                failure_task.domain_path = failure_task.domain.domain_path
+                print("failure_task.domain_path, ", failure_task.domain_path)
+                path = ""
+                for path_pc in failure_task.domain_path.split("/")[:-1]:
+                    path = path + path_pc + "/"
+                print(path)
+                for goal in failure_task.problem:
+                    key = goal.name
+                    print(key)
+                    file_path = path + f"output_goal_{key}.txt"
+                    print(file_path)
+                    if os.path.exists(file_path):
+                        print(file_path, " exists")
+                        f = open(file_path, "r")
+                        failure_task.summary[key] = f.read()
+                        failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                        failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                        failure_task.plan_achieved[key] = 1
+                        failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                        os.remove(file_path)
+                self.steps_observed.append(failure_task)
+                result_probs = self._calc_prob(i + 1)
+                for g in self.goal_list[i + 1]:
+                    if g.name not in result_probs[0].keys():
+                        result_probs[0][g.name] = 0.00
+                        result_probs[1][g.name] = 0.00
+                self.prob_dict_list.append(result_probs[0])
+                self.prob_nrmlsd_dict_list.append(result_probs[1])
+                self.predicted_step[i + 1] = self._predict_step(step=i)
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        #for i in range(step,0,-1):
-            #self._remove_step(i)
+        for i in range(step,0,-1):
+            self._remove_step(i)
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
