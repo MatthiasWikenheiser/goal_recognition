@@ -356,12 +356,11 @@ class gm_model(gr_model.gr_model):
             background_loop = True
             s = 3
             while background_loop:
-                time.sleep(0.5)
+                time.sleep(0.7)
                 #print("task.solved: ",self.task_thread_solve.solved )
                 if not (self.task_thread_solve.solved == 0 and (time.time() - check_failure_t <= time_step + 10) and len(
                     self.goal_list[i + 1]) > 0):
                     background_loop = False
-                    time.sleep(1)
                 if (time.time() - check_failure_t >= time_step + 10):
                     print("timeout reached")
                     while s > 0:
