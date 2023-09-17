@@ -202,9 +202,9 @@ class metric_ff_solver:
                 print(key)
         except subprocess.CalledProcessError as e:
             error = e.output.decode("ascii")
-            if "advancing to goal distance:" in error:
+            if "advancing to goal distance:" not in error:
                 print(f"-------------ERROR-------------")
-                print(error)
+                #print(error)
                 now = dt.datetime.now()
                 year = str(now.year)
                 month = str(now.month) if now.month > 10 else '0' + str(now.month)

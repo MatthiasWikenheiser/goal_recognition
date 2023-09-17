@@ -362,10 +362,15 @@ class pddl_observations:
     UNDER construction"""
     def __init__(self, csv_file):
         self.observation_path = csv_file
-        self.name = csv_file.split("|")[-1].replace(".csv","") if len(csv_file.split("|"))>1 else csv_file.replace(".csv","")
+        self.name = self._create_name()
         self.obs_file = pd.read_csv(self.observation_path)
         self.obs_len = len(self.obs_file)
         self.obs_action_sequence = self.obs_file["action"]
+    def _create_name(self):
+        if len(self.observation_path.split("/")) == 1:
+            return self.observation_path.replace(".csv","")
+        else:
+            return self.observation_path.split("/")[-1].replace(".csv","")
     def partial_action_sequence(self, sequence_length = None):
         if sequence_length  == None:
             return self.obs_action_sequence
@@ -378,4 +383,4 @@ if __name__ == '__main__':
     problem_a = pddl_problem('problem_A.pddl')
     print(problem_a.metric_min_func)
     obs_toy_example = pddl_observations('Observations.csv')
-    print(obs_toy_example.name)
+    print(obs_toy_example._create_name())

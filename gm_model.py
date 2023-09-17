@@ -304,8 +304,23 @@ class gm_model(gr_model.gr_model):
         #print([goal.problem_path for goal in self.goal_list[i + 1]])
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
-            self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
-                                         timeout=time_step, base_domain= "blka", observation_name = self.observation.name)#self.domain_root.domain_path.replace(".pddl","")
+            if len(self.domain_root.domain_path.split("/")) == 1:
+                base_domain = self.domain_root.domain_path.replace(".pddl","")
+            else:
+                base_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl","")
+            if self.crystal_island:
+                self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
+                                             timeout=time_step,
+                                             # base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                             base_domain= base_domain,
+                                             observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
+                                                               self.observation.name)
+            else:
+                self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
+                                         timeout=time_step,
+                                         #base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                         base_domain = base_domain,
+                                         observation_name = self.observation.name)
                                          #, observation_name= self.observation.name)
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
