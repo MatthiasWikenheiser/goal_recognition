@@ -362,6 +362,7 @@ class pddl_observations:
     UNDER construction"""
     def __init__(self, csv_file):
         self.observation_path = csv_file
+        self.name = csv_file.split("|")[-1].replace(".csv","") if len(csv_file.split("|"))>1 else csv_file.replace(".csv","")
         self.obs_file = pd.read_csv(self.observation_path)
         self.obs_len = len(self.obs_file)
         self.obs_action_sequence = self.obs_file["action"]
@@ -376,3 +377,5 @@ if __name__ == '__main__':
     print(toy_example_domain.action_dict["MOVE_LEFT_FROM"].action_parameters[0].parameter)
     problem_a = pddl_problem('problem_A.pddl')
     print(problem_a.metric_min_func)
+    obs_toy_example = pddl_observations('Observations.csv')
+    print(obs_toy_example.name)

@@ -1,6 +1,7 @@
 import os
 import time
 from time import sleep
+import datetime as dt
 import threading
 import psutil
 from multiprocessing import Process
@@ -8,6 +9,7 @@ import multiprocessing as mp
 import subprocess
 from pddl import pddl_domain
 from pddl import pddl_problem
+path_error = "/home/mwiubuntu/error_write/"
 class metric_ff_solver:
     """Call of MetricFF Planner with specified pddl_domain and at least one pddl_problem.
     ATTENTION: MetricFF Planner must be compiled and available in pddl_domain.domain_path
@@ -68,7 +70,8 @@ class metric_ff_solver:
         for el in path[1:]:
             path_result = path_result + "/" + el
         return path_result
-    def solve(self, domain, problem, multiprocess = True, type_solver = '3', weight = '1', timeout = 90.0):
+    def solve(self, domain, problem, multiprocess = True, type_solver = '3', weight = '1', timeout = 90.0,
+              base_domain = None, observation_name = None):
         """solves one or many pddl_problem(s), given a pddl_domain and provides a data structure for result outputs
         :param domain: pddl_domain object
         :param problem: one or many (list) pddl_problem objects
@@ -126,7 +129,8 @@ class metric_ff_solver:
             for i in range(len(self.problem)):
                 key = self.problem[i].name
                 self.processes[key] = Process(target=self._run_metric_ff_mp, args=[self.domain_path,
-                                                                           self.problem_path[i],i,key] )
+                                                                           self.problem_path[i],i,key, base_domain,
+                                                                                   observation_name])
             for i in range(len(self.problem)):
                 key = self.problem[i].name
                 print("start_", self.processes[key])
@@ -183,18 +187,41 @@ class metric_ff_solver:
             self.solved = 1
             if self.solved != 0:
                 [os.remove(fp) for fp in files]
-    def _run_metric_ff_mp(self, domain, problem, i, key):
+    def _run_metric_ff_mp(self, domain, problem, i, key, base_domain, observation_name):
         command_string = f"./{self.planner} -o {domain} -f {problem} -s {self.type_solver} -w {self.weight}"
         #print(command_string)
         path = ""
         for path_pc in domain.split("/")[:-1]:
             path = path + path_pc +"/"
-        output = subprocess.check_output(command_string, shell = True)
-        with open(path + f"output_goal_{key}.txt", "w") as output_write:
-            output_write.write(output.decode("ascii") )
-        self.mp_output_goals[key].value = output
-        self.mp_goal_computed[key].value = 1
-        print(key)
+        try:
+            output = subprocess.check_output(command_string, shell = True)
+            with open(path + f"output_goal_{key}.txt", "w") as output_write:
+                output_write.write(output.decode("ascii"))
+                self.mp_output_goals[key].value = output
+                self.mp_goal_computed[key].value = 1
+                print(key)
+        except subprocess.CalledProcessError as e:
+            error = e.output.decode("ascii")
+            if "advancing to goal distance:" in error:
+                print(f"-------------ERROR-------------")
+                print(error)
+                now = dt.datetime.now()
+                year = str(now.year)
+                month = str(now.month) if now.month > 10 else '0' + str(now.month)
+                day = str(now.day) if now.day > 10 else '0' + str(now.day)
+                hour = str(now.hour) if now.hour > 10 else '0' + str(now.hour)
+                minute = str(now.minute) if now.minute > 10 else '0' + str(now.minute)
+                seconds = str(now.second) if now.second > 10 else '0' + str(now.second)
+                tmstmp = f"{year}{month}{day}-{hour}{minute}{seconds}"
+                d = domain.replace(".pddl", "")
+                p = problem.replace(".pddl", "")
+                if base_domain is None or observation_name is None:
+                    with open(path_error + f"error_{tmstmp}_{d}_{p}.txt", "w") as error_write:
+                        error_write.write(error)
+                else:
+                    with open(path_error + f"error_{tmstmp}_{base_domain}_{observation_name}_{p}.txt", "w") as error_write:
+                        error_write.write(error)
+                print("-------------ERROR-------------")
     def _run_metric_ff_loop(self, domain, problem, i):
         command_string = f"./{self.planner} -o {domain} -f {problem} -s {self.type_solver} -w {self.weight}"
         output = subprocess.check_output(command_string, shell = True)

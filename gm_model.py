@@ -304,7 +304,9 @@ class gm_model(gr_model.gr_model):
         #print([goal.problem_path for goal in self.goal_list[i + 1]])
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
-            self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess, timeout=time_step)
+            self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
+                                         timeout=time_step, base_domain= "blka", observation_name = self.observation.name)#self.domain_root.domain_path.replace(".pddl","")
+                                         #, observation_name= self.observation.name)
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -420,3 +422,4 @@ if __name__ == '__main__':
     model.perform_solve_observed()
     print(model.predicted_step)
     print(model.prob_nrmlsd_dict_list)
+    print(model.observation.name)
