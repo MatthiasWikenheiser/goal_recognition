@@ -4,7 +4,9 @@ import gr_model
 import time
 import os
 import shutil
+import psutil
 import numpy as np
+import threading
 import matplotlib.pyplot as plt
 import pickle
 import hashlib
@@ -104,6 +106,9 @@ class prap_model(gr_model.gr_model):
             new_domain.write(domain_string)
         self.domain_list.append(pddl_domain(path + f"/domain_obs_step_{step}.pddl"))
         new_goal_list = []
+
+
+
         for goal in range(len(self.goal_list[0])):
             goal_string = self._create_obs_goal(goal, step)
             with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
@@ -125,6 +130,34 @@ class prap_model(gr_model.gr_model):
             if step == 1:
                 os.remove(path + f"/{self.planner}")
                 os.rmdir(path)
+    def _thread_solve(self, i, multiprocess, time_step):
+        #print([goal.problem_path for goal in self.goal_list[i + 1]])
+
+        ##            task = metric_ff_solver(planner = self.planner)
+            ##task.solve(self.domain_list[i+1],self.goal_list[i+1], multiprocess = multiprocess, timeout=time_step)
+
+
+        self.task_thread_solve = metric_ff_solver(planner=self.planner)
+        if len(self.goal_list[i + 1]) > 0:
+            if len(self.domain_root.domain_path.split("/")) == 1:
+                base_domain = self.domain_root.domain_path.replace(".pddl","")
+            else:
+                base_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl","")
+            if self.crystal_island:
+                self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
+                                             timeout=time_step,
+                                             # base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                             base_domain= base_domain,
+                                             observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
+                                                               self.observation.name)
+            else:
+                self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
+                                         timeout=time_step,
+                                         #base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                         base_domain = base_domain,
+                                         observation_name = self.observation.name)
+                                         #, observation_name= self.observation.name)
+
     def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -132,7 +165,7 @@ class prap_model(gr_model.gr_model):
         from given obs_action_sequence.
         :param step: specifies how many observations in observation sequence get solved.
                      If set to -1 (default) entire observation sequence is solved
-        :param priors: priors of goal_list, default assigns equal probabilites to each goal
+        :param priors: expects dictionary with priors of goal_list, default assigns equal probabilites to each goal.
         :param beta: beta in P(O|G) and P(!O|G)
         :param multiprocess: if True, all transformed problems (goals) of one step are solved in parallel
 
@@ -143,45 +176,85 @@ class prap_model(gr_model.gr_model):
             step =  self.observation.obs_len
         start_time = time.time()
         for i in range(step):
+            time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             self._add_step(i+1)
-            task = metric_ff_solver(planner = self.planner)
-            task.solve(self.domain_list[i+1],self.goal_list[i+1], multiprocess = multiprocess)
-            self.steps_observed.append(task)
-            self.prob_dict_list.append(self._calc_prob(i+1, priors, beta)[0])
-            self.prob_nrmlsd_dict_list.append(self._calc_prob(i+1, priors, beta)[1])
-            self.predicted_step[i + 1] = self._predict_step(step=i)
+            print(self.observation.obs_file.loc[i, "action"] + ", " + str(time_step) + " seconds to solve")
+            try:
+                time_step = 3
+                t = threading.Thread(target=self._thread_solve,
+                                     args=[i, multiprocess, time_step])
+                t.start()
+            except:
+                pass
+            check_failure_t = time.time()
+            failure = False
+            background_loop = True
+            s = 3
+            while background_loop:
+                time.sleep(0.7)
+                # print("task.solved: ",self.task_thread_solve.solved )
+                if not (self.task_thread_solve.solved == 0 and (
+                        time.time() - check_failure_t <= time_step + 10) and len(
+                        self.goal_list[i + 1]) > 0):
+                    background_loop = False
+                if (time.time() - check_failure_t >= time_step + 10):
+                    print("timeout reached")
+                    while s > 0:
+                        print("continue in ", s)
+                        s -= 1
+                        time.sleep(1)
+                        [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                    failure = True
+            if not failure:
+                self.steps_observed.append(self.task_thread_solve)
+                result_probs = self._calc_prob(i + 1)
+                for g in self.goal_list[i+1]:
+                    if g.name not in result_probs[0].keys():
+                        result_probs[0][g.name] = 0.00
+                        result_probs[1][g.name] = 0.00
+                self.prob_dict_list.append(result_probs[0])
+                self.prob_nrmlsd_dict_list.append(result_probs[1])
+                self.predicted_step[i+1] = self._predict_step(step= i)
+            else:
+                [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                print("failure, read in files ")
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        for i in range(step,0,-1):
-            self._remove_step(i)
+        #for i in range(step,0,-1):
+            #self._remove_step(i)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
             return None
         if priors == None:
-            priors = np.array([1/len(self.goal_list[0]) for _ in range(len(self.goal_list[0]))])
+            priors_dict = {}
+            for key in self.steps_observed[step - 1].plan_achieved.keys():
+                priors_dict[key] = 1 / len(self.goal_list[step])
         else:
-            priors = np.array(priors)
-        optimal_costs = [self.steps_optimal.plan_cost[key] for key in list(self.steps_optimal.plan_cost.keys())]
-        optimal_costs = np.array(optimal_costs)
-        p_optimal_costs_likeli = np.exp(-beta * optimal_costs)
-        p_optimal = priors * p_optimal_costs_likeli
-        observed_costs = [self.steps_observed[step-1].plan_cost[key] for key in list(self.steps_observed[step-1].plan_cost.keys())]
-        observed_costs = np.array(observed_costs)
-        p_observed_costs_likeli = np.exp(-beta * observed_costs)
-        p_observed = priors * p_observed_costs_likeli
+            priors_dict = {}
+            for key in self.steps_observed[step - 1].plan_achieved.keys():
+                priors_dict[key] = priors[key]
+        p_observed = {}
+        p_optimal = {}
+        for key in self.steps_observed[step - 1].plan_achieved.keys():
+            optimal_costs = self.steps_optimal.plan_cost[key]
+            p_optimal_costs_likeli = np.exp(-beta * optimal_costs)
+            p_optimal[key] = priors_dict[key] * p_optimal_costs_likeli
+            observed_costs = self.steps_observed[step - 1].plan_cost[key]
+            p_observed_costs_likeli = np.exp(-beta * observed_costs)
+            p_observed[key] = priors_dict[key] * p_observed_costs_likeli
         prob = []
         prob_dict = {}
-        for i in range(len(optimal_costs)):
-            prob.append(p_observed[i]/(p_observed[i] + p_optimal[i]))
-            key = list(self.steps_optimal.plan_cost.keys())[i]
-            prob_dict[key] = p_observed[i]/(p_observed[i] + p_optimal[i])
-            prob_dict[key]  = np.round(prob_dict[key], 4)
+        for i in range(len(self.steps_observed[step - 1].plan_achieved.keys())):
+            key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
+            prob.append(p_observed[key] / (p_observed[key] + p_optimal[key]))
+            prob_dict[key] = p_observed[key] / (p_observed[key] + p_optimal[key])
+            prob_dict[key] = np.round(prob_dict[key], 4)
         prob_normalised_dict = {}
         for i in range(len(prob)):
-            key = list(self.steps_optimal.plan_cost.keys())[i]
-            prob_normalised_dict[key] = (prob[i]/(sum(prob)))
+            key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
+            prob_normalised_dict[key] = (prob[i] / (sum(prob)))
             prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
         return prob_dict, prob_normalised_dict
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=False):

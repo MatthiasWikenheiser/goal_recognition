@@ -345,7 +345,7 @@ class gm_model(gr_model.gr_model):
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
             try:
-                time_step = 3
+                #time_step = 3
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
