@@ -106,15 +106,17 @@ class prap_model(gr_model.gr_model):
             new_domain.write(domain_string)
         self.domain_list.append(pddl_domain(path + f"/domain_obs_step_{step}.pddl"))
         new_goal_list = []
+        if "goals_remaining" not in self.observation.obs_file.columns:
+            for goal in range(len(self.goal_list[0])):
+                goal_string = self._create_obs_goal(goal, step)
+                with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
+                    new_goal.write(goal_string)
+                new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
+            self.goal_list.append(new_goal_list)
+        else:
+            print("goals_remaining")
 
 
-
-        for goal in range(len(self.goal_list[0])):
-            goal_string = self._create_obs_goal(goal, step)
-            with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
-                new_goal.write(goal_string)
-            new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
-        self.goal_list.append(new_goal_list)
         if step == 1:
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
     def _remove_step(self, step = 1):
