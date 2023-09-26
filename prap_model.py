@@ -79,8 +79,7 @@ class prap_model(gr_model.gr_model):
             predicates_string = predicates_string + " " + predicate
         predicates_string = predicates_string + " " + f"(obs_precondition_{step}" + "))"
         return predicates_string
-    def _create_obs_goal(self, goal_idx = 0, step = 1):
-        goal = self.goal_list[0][goal_idx]
+    def _create_obs_goal(self, goal, step = 1):
         new_goal = f"(define (problem {goal.name})\n"
         new_goal = new_goal + f"(:domain {self.domain_list[step-1].name})"
         new_goal = new_goal + "\n(:objects)"
@@ -107,16 +106,22 @@ class prap_model(gr_model.gr_model):
         self.domain_list.append(pddl_domain(path + f"/domain_obs_step_{step}.pddl"))
         new_goal_list = []
         if "goals_remaining" not in self.observation.obs_file.columns:
-            for goal in range(len(self.goal_list[0])):
+            for goal_idx in range(len(self.goal_list[0])):
+                goal = self.goal_list[0][goal_idx]
                 goal_string = self._create_obs_goal(goal, step)
-                with open(path + f"/goal_{goal}_obs_step_{step}.pddl", "w") as new_goal:
+                with open(path + f"/goal_{goal_idx}_obs_step_{step}.pddl", "w") as new_goal:
                     new_goal.write(goal_string)
-                new_goal_list.append(pddl_problem(path + f"/goal_{goal}_obs_step_{step}.pddl"))
-            self.goal_list.append(new_goal_list)
+                new_goal_list.append(pddl_problem(path + f"/goal_{goal_idx}_obs_step_{step}.pddl"))
+            #self.goal_list.append(new_goal_list)
         else:
-            print("goals_remaining")
-
-
+            for goal in self.goal_list[0]:
+                if goal.name in self.observation.obs_file.loc[step - 1, "goals_remaining"]:
+                    goal_string = self._create_obs_goal(goal, step)
+                    goal_idx = goal.name.split("_")[-1]
+                    with open(path + f"/goal_{goal_idx}_obs_step_{step}.pddl", "w") as new_goal:
+                        new_goal.write(goal_string)
+                    new_goal_list.append(pddl_problem(path + f"/goal_{goal_idx}_obs_step_{step}.pddl"))
+        self.goal_list.append(new_goal_list)
         if step == 1:
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
     def _remove_step(self, step = 1):
@@ -222,6 +227,38 @@ class prap_model(gr_model.gr_model):
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 print("failure, read in files ")
+                failure_task = metric_ff_solver()
+                failure_task.problem = self.goal_list[i + 1]
+                failure_task.domain = self.domain_list[i + 1]
+                failure_task.domain_path = failure_task.domain.domain_path
+                print("failure_task.domain_path, ", failure_task.domain_path)
+                path = ""
+                for path_pc in failure_task.domain_path.split("/")[:-1]:
+                    path = path + path_pc + "/"
+                print(path)
+                for goal in failure_task.problem:
+                    key = goal.name
+                    print(key)
+                    file_path = path + f"output_goal_{key}.txt"
+                    print(file_path)
+                    if os.path.exists(file_path):
+                        print(file_path, " exists")
+                        f = open(file_path, "r")
+                        failure_task.summary[key] = f.read()
+                        failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                        failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                        failure_task.plan_achieved[key] = 1
+                        failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                        os.remove(file_path)
+                self.steps_observed.append(failure_task)
+                result_probs = self._calc_prob(i + 1)
+                for g in self.goal_list[i + 1]:
+                    if g.name not in result_probs[0].keys():
+                        result_probs[0][g.name] = 0.00
+                        result_probs[1][g.name] = 0.00
+                self.prob_dict_list.append(result_probs[0])
+                self.prob_nrmlsd_dict_list.append(result_probs[1])
+                self.predicted_step[i + 1] = self._predict_step(step=i)
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         #for i in range(step,0,-1):
             #self._remove_step(i)
