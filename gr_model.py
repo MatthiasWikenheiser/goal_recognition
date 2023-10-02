@@ -23,6 +23,7 @@ class gr_model:
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
         self.domain_root = domain_root
+        self.changed_domain_root = None
         self.crystal_island = domain_root.name == "crystal_island"
         self.observation = obs_action_sequence
         self.crystal_island_solution = self._crystal_island_solution()
@@ -45,11 +46,13 @@ class gr_model:
                 solution = "ecoli"
                 new_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl", "_ecoli.pddl")
                 change_domain += new_domain
+                self.changed_domain_root = self.domain_root
                 self.domain_root = pddl_domain(change_domain)
             elif "_Salmonellosis" in file_name_obs:
                 solution =  "salmonellosis"
                 new_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl", "_salmonellosis.pddl")
                 change_domain += new_domain
+                self.changed_domain_root = self.domain_root
                 self.domain_root = pddl_domain(change_domain)
             else:
                 solution =  None #domain remains on default (salmonellosis)

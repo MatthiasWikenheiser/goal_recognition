@@ -202,7 +202,7 @@ class metric_ff_solver:
                 print(key)
         except subprocess.CalledProcessError as e:
             error = e.output.decode("ascii")
-            if "advancing to goal distance:" not in error:
+            if "advancing to goal distance:" not in error and error != "":
                 print(f"-------------ERROR-------------")
                 #print(error)
                 now = dt.datetime.now()

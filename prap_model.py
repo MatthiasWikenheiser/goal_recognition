@@ -7,9 +7,7 @@ import shutil
 import psutil
 import numpy as np
 import threading
-import matplotlib.pyplot as plt
-import pickle
-import hashlib
+import gm_model
 class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
@@ -165,7 +163,7 @@ class prap_model(gr_model.gr_model):
                                          observation_name = self.observation.name)
                                          #, observation_name= self.observation.name)
 
-    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True):
+    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
@@ -182,14 +180,36 @@ class prap_model(gr_model.gr_model):
         if step == -1:
             step =  self.observation.obs_len
         start_time = time.time()
+        if gm_support:
+            path_support = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],
+                                                                   "") + "temp"
+            if self.changed_domain_root is None:
+                gm_support_model = gm_model.gm_model(self.domain_root,self.goal_list,
+                                                 self.observation, self.planner)
+            else:
+                gm_support_model = gm_model.gm_model(self.changed_domain_root, self.goal_list[0],
+                                                  self.observation, self.planner)
+            gm_support_model.domain_temp = self.domain_root
+            if not os.path.exists(path_support):
+                os.mkdir(path_support)
         for i in range(step):
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
-            self._add_step(i+1)
+            if gm_support:
+                new_goal_support_list = []
+                for goal in range(len(self.goal_list[-1])):
+                    if self.goal_list[-1][goal].name in self.observation.obs_file.loc[i, "goals_remaining"]:
+                        goal_string_support = gm_support_model._create_obs_goal(goal_idx = goal, step = i+1)
+                        path_support_file = path_support + f"/gm_support_goal_{goal+1}_obs_step_{i}.pddl"
+                        with open(path_support_file, "w") as new_goal_support:
+                            new_goal_support.write(goal_string_support)
+                        new_goal_support_list.append(pddl_problem(path_support_file))
+                gm_support_model.goal_list.append(new_goal_support_list)
             print(self.observation.obs_file.loc[i, "action"] + ", " + str(time_step) + " seconds to solve")
+            self._add_step(i + 1)
             try:
-                time_step = 3
+                time_step = 7
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
@@ -260,8 +280,12 @@ class prap_model(gr_model.gr_model):
                 self.prob_nrmlsd_dict_list.append(result_probs[1])
                 self.predicted_step[i + 1] = self._predict_step(step=i)
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
-        #for i in range(step,0,-1):
-            #self._remove_step(i)
+        if gm_support:
+            for gl in gm_support_model.goal_list[1:]:
+                for g in gl:
+                    os.remove(g.problem_path)
+        for i in range(step,0,-1):
+            self._remove_step(i)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
