@@ -209,7 +209,7 @@ class prap_model(gr_model.gr_model):
             print(self.observation.obs_file.loc[i, "action"] + ", " + str(time_step) + " seconds to solve")
             self._add_step(i + 1)
             try:
-                time_step = 7
+                time_step = 5
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()

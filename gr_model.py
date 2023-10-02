@@ -1,3 +1,4 @@
+import os
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
 import hashlib
@@ -6,6 +7,8 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import dotenv
+
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
     with open(path + filename, "wb") as outp:
@@ -36,6 +39,11 @@ class gr_model:
         self.mp_seconds = None
         self.predicted_step = {}
         self.hash_code = self._create_hash_code()
+        self.path_error_env = self._load_env()
+        self.error_write_files = os.listdir(self.path_error_env)
+    def _load_env(self):
+        dotenv.load_dotenv()
+        return os.getenv("PATH_ERROR")
     def _crystal_island_solution(self):
         if self.crystal_island:
             file_name_obs = self.observation.observation_path.split("/")[-1]
@@ -150,3 +158,5 @@ if __name__ == '__main__':
     print(model.hash_code)
     model.perform_solve_optimal()
     print(model.steps_optimal.plan)
+    print(model.path_error_env)
+    print(model.error_write_files)
