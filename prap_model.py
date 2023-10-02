@@ -334,6 +334,8 @@ if __name__ == '__main__':
     obs_toy_example = pddl_observations('Observations.csv')
     model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
     print(model.hash_code)
+    print(model.path_error_env)
+    print(model.error_write_files)
     model.perform_solve_optimal(multiprocess=True)
     print(model.steps_optimal.plan)
 

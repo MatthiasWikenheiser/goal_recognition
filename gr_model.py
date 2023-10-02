@@ -39,11 +39,8 @@ class gr_model:
         self.mp_seconds = None
         self.predicted_step = {}
         self.hash_code = self._create_hash_code()
-        self.path_error_env = self._load_env()
+        self.path_error_env = "/home/mwiubuntu/error_write/"
         self.error_write_files = os.listdir(self.path_error_env)
-    def _load_env(self):
-        dotenv.load_dotenv()
-        return os.getenv("PATH_ERROR")
     def _crystal_island_solution(self):
         if self.crystal_island:
             file_name_obs = self.observation.observation_path.split("/")[-1]
