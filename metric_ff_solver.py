@@ -9,7 +9,7 @@ import multiprocessing as mp
 import subprocess
 from pddl import pddl_domain
 from pddl import pddl_problem
-path_error = os.getenv("PATH_ERROR")
+path_error = "/home/mwiubuntu/error_write/"
 class metric_ff_solver:
     """Call of MetricFF Planner with specified pddl_domain and at least one pddl_problem.
     ATTENTION: MetricFF Planner must be compiled and available in pddl_domain.domain_path

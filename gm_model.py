@@ -23,32 +23,6 @@ class gm_model(gr_model.gr_model):
         """
         super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
-    def _split_recursive_and_or(self, parse_string, key_word):
-        split_list = []
-        strt_idx = parse_string.find(key_word) + len(key_word)
-        new_string = parse_string[strt_idx:]
-        strt_idx += new_string.find("(")
-        end_idx = len(parse_string) - 1
-        parse_back = True
-        while end_idx > 0 and parse_back:
-            if parse_string[end_idx] == ")":
-                parse_string = parse_string[:end_idx]
-                parse_back = False
-            end_idx -= 1
-        c = strt_idx + 1
-        parse_bracket = 1
-        while c < len(parse_string):
-            if parse_string[c] == "(":
-                parse_bracket += 1
-            if parse_string[c] == ")":
-                parse_bracket -= 1
-            if parse_bracket == 0:
-                split_list.append(parse_string[strt_idx:c + 1])
-                strt_idx = c + parse_string[c:].find("(")
-                c = strt_idx + 1
-                parse_bracket = 1
-            c += 1
-        return split_list
     def _recursive_effect_check(self, parse_string, zipped_parameters, inside_when=False, key_word=None):
         effects = []
         string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n", "")
@@ -60,7 +34,7 @@ class gm_model(gr_model.gr_model):
             key_word = "or"
         if key_word in ["and", "or"]:
             is_true_list = []
-            split_list = self._split_recursive_and_or(parse_string, key_word)
+            split_list = gr_model._split_recursive_and_or(parse_string, key_word)
             if inside_when:
                 for split_element in split_list:
                     is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)

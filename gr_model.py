@@ -15,6 +15,32 @@ def save_model(model, filename):
         pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
 def load_model(file):
     return pickle.load(open(file, "rb"))
+def _split_recursive_and_or(parse_string, key_word):
+    split_list = []
+    strt_idx = parse_string.find(key_word) + len(key_word)
+    new_string = parse_string[strt_idx:]
+    strt_idx += new_string.find("(")
+    end_idx = len(parse_string) - 1
+    parse_back = True
+    while end_idx > 0 and parse_back:
+        if parse_string[end_idx] == ")":
+            parse_string = parse_string[:end_idx]
+            parse_back = False
+        end_idx -= 1
+    c = strt_idx + 1
+    parse_bracket = 1
+    while c < len(parse_string):
+        if parse_string[c] == "(":
+            parse_bracket += 1
+        if parse_string[c] == ")":
+            parse_bracket -= 1
+        if parse_bracket == 0:
+            split_list.append(parse_string[strt_idx:c + 1])
+            strt_idx = c + parse_string[c:].find("(")
+            c = strt_idx + 1
+            parse_bracket = 1
+        c += 1
+    return split_list
 class gr_model:
     """superclass that solves a goal recognition problem.
     """
@@ -84,6 +110,7 @@ class gr_model:
         :param weight: weight for type_solver = '3' ("weighted A*); weight = '1' resolves to unweighted A*
         :param timeout: after specified timeout is reached, all process are getting killed.
         """
+        self.chosen_optimal_timeout = timeout
         start_time = time.time()
         self.steps_optimal.solve(self.domain_root, self.goal_list[0], multiprocess=multiprocess,
                                  type_solver=type_solver, weight=weight, timeout=timeout)

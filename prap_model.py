@@ -8,6 +8,7 @@ import psutil
 import numpy as np
 import threading
 import gm_model
+import pandas as pd
 class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
@@ -184,28 +185,31 @@ class prap_model(gr_model.gr_model):
             path_support = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],
                                                                    "") + "temp"
             if self.changed_domain_root is None:
-                gm_support_model = gm_model.gm_model(self.domain_root,self.goal_list,
+                self.gm_support_model = gm_model.gm_model(self.domain_root,self.goal_list[0],
                                                  self.observation, self.planner)
             else:
-                gm_support_model = gm_model.gm_model(self.changed_domain_root, self.goal_list[0],
+                self.gm_support_model = gm_model.gm_model(self.changed_domain_root, self.goal_list[0],
                                                   self.observation, self.planner)
-            gm_support_model.domain_temp = self.domain_root
+            self.gm_support_model.domain_temp = self.domain_root
             if not os.path.exists(path_support):
                 os.mkdir(path_support)
-        for i in range(step):
+        i = 0
+        domain_bug = False
+        while i < step and not domain_bug:
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             if gm_support:
+                print(self._create_obs_action(i+1))
                 new_goal_support_list = []
                 for goal in range(len(self.goal_list[-1])):
                     if self.goal_list[-1][goal].name in self.observation.obs_file.loc[i, "goals_remaining"]:
-                        goal_string_support = gm_support_model._create_obs_goal(goal_idx = goal, step = i+1)
+                        goal_string_support = self.gm_support_model._create_obs_goal(goal_idx = goal, step = i+1)
                         path_support_file = path_support + f"/gm_support_goal_{goal+1}_obs_step_{i}.pddl"
                         with open(path_support_file, "w") as new_goal_support:
                             new_goal_support.write(goal_string_support)
                         new_goal_support_list.append(pddl_problem(path_support_file))
-                gm_support_model.goal_list.append(new_goal_support_list)
+                self.gm_support_model.goal_list.append(new_goal_support_list)
             print(self.observation.obs_file.loc[i, "action"] + ", " + str(time_step) + " seconds to solve")
             self._add_step(i + 1)
             try:
@@ -247,45 +251,91 @@ class prap_model(gr_model.gr_model):
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 print("failure, read in files ")
-                failure_task = metric_ff_solver()
-                failure_task.problem = self.goal_list[i + 1]
-                failure_task.domain = self.domain_list[i + 1]
-                failure_task.domain_path = failure_task.domain.domain_path
-                print("failure_task.domain_path, ", failure_task.domain_path)
-                path = ""
-                for path_pc in failure_task.domain_path.split("/")[:-1]:
-                    path = path + path_pc + "/"
-                print(path)
-                for goal in failure_task.problem:
-                    key = goal.name
-                    print(key)
-                    file_path = path + f"output_goal_{key}.txt"
-                    print(file_path)
-                    if os.path.exists(file_path):
-                        print(file_path, " exists")
-                        f = open(file_path, "r")
-                        failure_task.summary[key] = f.read()
-                        failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                        failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                        failure_task.plan_achieved[key] = 1
-                        failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                        os.remove(file_path)
-                self.steps_observed.append(failure_task)
-                result_probs = self._calc_prob(i + 1)
-                for g in self.goal_list[i + 1]:
-                    if g.name not in result_probs[0].keys():
-                        result_probs[0][g.name] = 0.00
-                        result_probs[1][g.name] = 0.00
-                self.prob_dict_list.append(result_probs[0])
-                self.prob_nrmlsd_dict_list.append(result_probs[1])
-                self.predicted_step[i + 1] = self._predict_step(step=i)
+                mff_bug = False
+                if len(os.listdir(self.path_error_env )) != len(self.error_write_files) and gm_support:
+                    for error_file in [x for x in os.listdir(self.path_error_env) if x not in self.error_write_files]:
+                        read_error = open(self.path_error_env + error_file, "r").read()
+                        if "unknown optimization method" in read_error:
+                            mff_bug = True
+                            domain_bug = True
+                        else:
+                            domain_bug = True
+                if mff_bug:
+                    print("-------bug reached---- wait 40 s")
+                    time.sleep(40)
+                    [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                    print("instantiate new prap_model")
+                    time.sleep(5)
+                    bug_path_split = self.domain_list[i].domain_path.split("/")[:-1]
+                    temp_path = ""
+                    for slice in bug_path_split:
+                        temp_path += slice +"/"
+                    bug_path = temp_path + "bug_path/"
+                    print("bug_path :", bug_path)
+                    os.mkdir(bug_path)
+                    shutil.copy(f'{self.planner}', bug_path + f'/{self.planner}')
+                    shutil.copy(self.domain_root.domain_path, bug_path + "domain_root.pddl")
+                    gm_support_step_goals = [x for x in os.listdir(temp_path) if "gm_support_goal" in x
+                                             and f"obs_step_{i-1}.pddl" in x]
+                    bug_goal_list = []
+                    for gm_support_goal in gm_support_step_goals:
+                        shutil.copy(temp_path + gm_support_goal, bug_path + gm_support_goal)
+                        bug_goal_list.append(pddl_problem(bug_path + gm_support_goal))
+                    bug_observation_left = pd.read_csv(self.observation.observation_path)
+                    bug_observation_left = bug_observation_left.iloc[i:, :]
+                    bug_observation_left = bug_observation_left.reset_index().iloc[:,1:]
+                    bug_observation_left.to_csv(bug_path + "bug_observation_left.csv", index = False)
+                    self.bug_prap_model = prap_model(pddl_domain(bug_path + "domain_root.pddl"), bug_goal_list,
+                                                pddl_observations(bug_path + "bug_observation_left.csv"))
+                    #print("check optimal_feasible")
+                    #bug_prap_model.perform_solve_optimal(multiprocess=True, type_solver='3', weight='1',
+                                                         #timeout=self.chosen_optimal_timeout)
+                    self.bug_prap_model.steps_optimal = self.steps_optimal
+                    print("continue check")
+                    time.sleep(10)
+                    self.bug_prap_model.perform_solve_observed(step = -1, priors = priors, beta= beta,
+                                                          multiprocess= multiprocess, gm_support= gm_support)
+                if not mff_bug:
+                    failure_task = metric_ff_solver()
+                    failure_task.problem = self.goal_list[i + 1]
+                    failure_task.domain = self.domain_list[i + 1]
+                    failure_task.domain_path = failure_task.domain.domain_path
+                    print("failure_task.domain_path, ", failure_task.domain_path)
+                    path = ""
+                    for path_pc in failure_task.domain_path.split("/")[:-1]:
+                        path = path + path_pc + "/"
+                    print(path)
+                    for goal in failure_task.problem:
+                        key = goal.name
+                        print(key)
+                        file_path = path + f"output_goal_{key}.txt"
+                        print(file_path)
+                        if os.path.exists(file_path):
+                            print(file_path, " exists")
+                            f = open(file_path, "r")
+                            failure_task.summary[key] = f.read()
+                            failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                            failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                            failure_task.plan_achieved[key] = 1
+                            failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                            os.remove(file_path)
+                    self.steps_observed.append(failure_task)
+                    result_probs = self._calc_prob(i + 1)
+                    for g in self.goal_list[i + 1]:
+                        if g.name not in result_probs[0].keys():
+                            result_probs[0][g.name] = 0.00
+                            result_probs[1][g.name] = 0.00
+                    self.prob_dict_list.append(result_probs[0])
+                    self.prob_nrmlsd_dict_list.append(result_probs[1])
+                    self.predicted_step[i + 1] = self._predict_step(step=i)
+            i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         if gm_support:
-            for gl in gm_support_model.goal_list[1:]:
+            for gl in self.gm_support_model.goal_list[1:]:
                 for g in gl:
                     os.remove(g.problem_path)
-        for i in range(step,0,-1):
-            self._remove_step(i)
+        #for i in range(step,0,-1):
+            #self._remove_step(i)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
