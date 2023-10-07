@@ -242,7 +242,12 @@ class GridSearch:
         new_domain = f"(define (domain {domain.name})\n"
         new_domain = new_domain + domain.requirements + "\n"
         new_domain = new_domain + domain.types + "\n"
-        new_domain = new_domain + domain.constants + "\n"
+        new_domain = new_domain + '(:constants '
+        for constant_type in domain.constants.keys():
+            for constant in domain.constants[constant_type]:
+                new_domain += constant + " "
+            new_domain += f"- {constant_type} "
+        new_domain += ")\n"
         new_domain = new_domain + "(:predicates"
         for predicate in domain.predicates:
             new_domain = new_domain + " " + predicate

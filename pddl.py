@@ -188,7 +188,24 @@ class pddl_domain:
     def _get_constants(self):
         idx_strt = self.domain.find("(:constants")
         idx_end = idx_strt + self.domain[idx_strt:].find("(:",1)
-        return self.domain[idx_strt:idx_end].replace("\n", "")
+        parse_constants = self.domain[idx_strt:idx_end].replace("\n", "")
+        parse_constants = parse_constants.replace("(:constants","").replace(")","")
+        parse_constants = parse_constants.replace("\n", " ").replace("\t", " ")
+        constants_split = parse_constants.split(" ")
+        constants_dict = {}
+        constant_type = False
+        constant_list = []
+        for constant in constants_split:
+            if constant != '':
+                if constant != "-":
+                    constant_list.append(constant)
+                if constant_type:
+                    constant_type = False
+                    constants_dict[constant] = constant_list[:-1]
+                    constant_list = []
+                if constant == "-":
+                    constant_type = True
+        return constants_dict
     def _get_predicates(self):
         predicates_list = []
         idx_strt = self.domain.find("(:predicates")
@@ -379,6 +396,7 @@ class pddl_observations:
 
 if __name__ == '__main__':
     toy_example_domain = pddl_domain('domain.pddl')
+    print(toy_example_domain.constants)
     print(toy_example_domain.action_dict["MOVE_LEFT_FROM"].action_parameters[0].parameter)
     problem_a = pddl_problem('problem_A.pddl')
     print(problem_a.metric_min_func)

@@ -27,7 +27,12 @@ class prap_model(gr_model.gr_model):
         new_domain = f"(define (domain {domain.name})\n"
         new_domain = new_domain + domain.requirements + "\n"
         new_domain = new_domain + domain.types + "\n"
-        new_domain = new_domain + domain.constants + "\n"
+        new_domain = new_domain + '(:constants '
+        for constant_type in domain.constants.keys():
+            for constant in domain.constants[constant_type]:
+                new_domain += constant + " "
+            new_domain += f"- {constant_type} "
+        new_domain += ")\n"
         new_domain = new_domain + self._create_obs_predicates(step) + "\n"
         new_domain = new_domain + "(:functions "
         for function in domain.functions:
@@ -200,7 +205,7 @@ class prap_model(gr_model.gr_model):
             step_time = time.time()
             print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             if gm_support:
-                print(self._create_obs_action(i+1))
+                #print(self._create_obs_action(i+1))
                 new_goal_support_list = []
                 for goal in range(len(self.goal_list[-1])):
                     if self.goal_list[-1][goal].name in self.observation.obs_file.loc[i, "goals_remaining"]:
