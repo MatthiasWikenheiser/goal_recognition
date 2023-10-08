@@ -243,9 +243,22 @@ class prap_model(gr_model.gr_model):
             if gm_support:
                 new_action_key = [action for action in self.domain_list[i + 1].action_dict.keys() if f"OBS_PRECONDITION_{i + 1}" in action][0]
                 action = self.domain_list[i + 1].action_dict[new_action_key]
-                print(gr_model._is_action_possible(action,
+                action_possible = gr_model._is_action_possible(action,
                                            problem_obs_con_support.start_fluents,
-                                           self.observation.obs_file.loc[i, "action"]))
+                                           self.observation.obs_file.loc[i, "action"])
+                print(action_possible)
+                if not action_possible:
+                    error_action_possible = f"error in observation: {self.observation.observation_path}\n"
+                    error_action_possible += f"error caused by observation: {self.observation.obs_file.loc[i, "action"]}\n"
+                    error_action_possible += "action not possible:\n"
+                    error_action_possible += action.action + "\n\n\n"
+                    error_action_possible += "state at moment of error: \n"
+                    for fluent in problem_obs_con_support.start_fluents:
+                        error_action_possible += f"{fluent}\n"
+                    path_error_action_possible = (self.path_error_env + "error_action_possible_ " + self.observation.name +
+                                                  "_step_" + i+1 + ".txt")
+                    with open(path_error_action_possible, "w") as new_goal_support:
+                        new_goal_support.write(error_action_possible)
             try:
                 time_step = 5
                 t = threading.Thread(target=self._thread_solve,
