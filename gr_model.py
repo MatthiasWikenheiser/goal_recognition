@@ -7,7 +7,8 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import dotenv
+import re
+import copy
 
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
@@ -15,6 +16,98 @@ def save_model(model, filename):
         pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
 def load_model(file):
     return pickle.load(open(file, "rb"))
+def _clean_literal(literal):
+    left_bracket_clean = re.sub("\s*\(\s*", "(", literal)
+    right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
+    inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
+    return inner_whitespace_clean
+def _is_action_possible(pddl_action, start_fluents, observation_title):
+    start_fluents = [_clean_literal(sf) for sf in start_fluents]
+    if len(observation_title.split(" ")) > 1:
+        obs_params = [(observation_title.split(" ")[i+1].lower(),
+                       pddl_action.action_parameters[i].parameter) for i in range(len(pddl_action.action_parameters))]
+        new_action = copy.deepcopy(pddl_action)
+        for param in obs_params:
+            new_action.action_preconditions = new_action.action_preconditions.replace(param[1], param[0])
+        pddl_action = new_action
+    precondition_given = _recursive_check_precondition(pddl_action, start_fluents, start_point=True)
+    return precondition_given
+def _recursive_check_precondition(pddl_action, start_fluents, inside_when = False, start_point = False, key_word = None):
+    if start_point:
+        parse_string = pddl_action.action_preconditions
+        parse_string = "(" + parse_string + ")"
+    else:
+        parse_string = pddl_action
+    string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n","")
+    if string_cleaned_blanks.startswith("(and"):
+        key_word = "and"
+    elif string_cleaned_blanks.startswith("(or"):
+        key_word = "or"
+    if key_word in ["and", "or"]:
+        is_true_list = []
+        split_list = _split_recursive_and_or(parse_string, key_word)
+        for split_element in split_list:
+            is_true = _recursive_check_precondition(split_element, start_fluents, inside_when = inside_when)
+            is_true_list.append(is_true)
+        if key_word == "and":
+            if all(is_true_list):
+                return True
+            else:
+                return False
+        elif key_word == "or":
+            if any(is_true_list):
+                return True
+            else:
+                return False
+    if key_word is None:
+        parse_string = _clean_literal(parse_string)
+        if "=" in parse_string and len(_clean_literal(parse_string).split(" ")) > 1:
+            parse_str_split = parse_string.split(" ")
+            var = parse_str_split[1].replace(" ", "")
+            obj = parse_str_split[2].replace(" ", "").replace(")", "")
+            if "(not(" in parse_string:
+                if var != obj:
+                    return True
+                else:
+                    return False
+            else:
+                if var == obj:
+                    return True
+                else:
+                    return False
+        elif len([op for op in ["=", ">", "<"] if op in parse_string]) == 1 and len(_clean_literal(parse_string).split(" ")) == 1:
+            operator = parse_string[1]
+            reference_point_action = float(re.findall('\d+', parse_string)[0])
+            function_name = re.findall('\(\w+-*_*\w*\)', parse_string)[0]
+            problem_state = [_clean_literal(fluent) for fluent in start_fluents if function_name in _clean_literal(fluent)][0]
+            problem_number = float(re.findall('\d+', problem_state)[0])
+            if operator == "=":
+                if problem_number == reference_point_action:
+                    return True
+                else:
+                    return False
+            if operator == ">":
+                if problem_number > reference_point_action:
+                    return True
+                else:
+                    return False
+            if operator == "<":
+                if problem_number < reference_point_action:
+                    return True
+                else:
+                    return False
+        else:
+            if "(not(" in parse_string:
+                if parse_string not in start_fluents:
+                    return True
+                else:
+                    return False
+            else:
+                if parse_string in start_fluents:
+                    return True
+                else:
+                    return False
+
 def _split_recursive_and_or(parse_string, key_word):
     split_list = []
     strt_idx = parse_string.find(key_word) + len(key_word)

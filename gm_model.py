@@ -185,14 +185,14 @@ class gm_model(gr_model.gr_model):
                 if identified_func == goal.metric_min_func:
                     self.cost_obs_cum = float(re.findall(r'\d+\.*\d*', new_start_fluents[idx_func_start_fluents])[0])
             else:
-                effect = self._clean_effect(effect)
+                effect = gr_model._clean_literal(effect)
                 if "(not(" in effect:
                     opposite = re.findall("\([\s*\w*\-*\s*]*\)", effect)[0]
                 else:
                     opposite = "(not" + effect + ")"
                 remember_index = -1
                 for i in range(len(new_start_fluents)):
-                    if opposite == self._clean_effect(new_start_fluents[i]):
+                    if opposite == gr_model._clean_literal(new_start_fluents[i]):
                         remember_index = i
                 if remember_index != -1:
                     new_start_fluents[remember_index] = effect
@@ -204,11 +204,6 @@ class gm_model(gr_model.gr_model):
                 if fl not in result_fluents:
                     result_fluents.append(fl)
         return result_fluents
-    def _clean_effect(self, effect):
-        left_bracket_clean = re.sub("\s*\(\s*", "(", effect)
-        right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
-        inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
-        return inner_whitespace_clean
     def _add_step(self, step= 1):
         last_step = self.observation.obs_len == step
         path = self.domain_root.domain_path.replace(self.domain_root.domain_path.split("/")[-1],"") + "temp"
