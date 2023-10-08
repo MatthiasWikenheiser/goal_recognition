@@ -83,6 +83,22 @@ class prap_model(gr_model.gr_model):
             predicates_string = predicates_string + " " + predicate
         predicates_string = predicates_string + " " + f"(obs_precondition_{step}" + "))"
         return predicates_string
+    def _create_obs_con_goal(self, goal, step = 1):
+        new_goal = f"(define (problem {goal.name})\n"
+        new_goal = new_goal + f"(:domain {self.domain_list[step - 1].name})"
+        new_goal = new_goal + "\n(:objects)"
+        new_goal = new_goal + "\n(:init "
+        for start_fluent in goal.start_fluents:
+            new_goal = new_goal + "\n" + start_fluent
+        for i in range(step):
+            new_goal = new_goal + f"\n(obs_precondition_{i + 1})"
+        new_goal = new_goal + "\n)"
+        new_goal = new_goal + "\n(:goal (and "
+        for goal_fluent in goal.goal_fluents:
+            new_goal = new_goal + "\n" + goal_fluent
+        new_goal = new_goal + ")\n)"
+        new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
+        return new_goal
     def _create_obs_goal(self, goal, step = 1):
         new_goal = f"(define (problem {goal.name})\n"
         new_goal = new_goal + f"(:domain {self.domain_list[step-1].name})"
@@ -142,12 +158,6 @@ class prap_model(gr_model.gr_model):
                 os.remove(path + f"/{self.planner}")
                 os.rmdir(path)
     def _thread_solve(self, i, multiprocess, time_step):
-        #print([goal.problem_path for goal in self.goal_list[i + 1]])
-
-        ##            task = metric_ff_solver(planner = self.planner)
-            ##task.solve(self.domain_list[i+1],self.goal_list[i+1], multiprocess = multiprocess, timeout=time_step)
-
-
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
             if len(self.domain_root.domain_path.split("/")) == 1:
@@ -187,6 +197,7 @@ class prap_model(gr_model.gr_model):
             step =  self.observation.obs_len
         start_time = time.time()
         if gm_support:
+            list_problem_obs_con = []
             path_support = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],
                                                                    "") + "temp"
             if self.changed_domain_root is None:
@@ -213,10 +224,28 @@ class prap_model(gr_model.gr_model):
                         path_support_file = path_support + f"/gm_support_goal_{goal+1}_obs_step_{i}.pddl"
                         with open(path_support_file, "w") as new_goal_support:
                             new_goal_support.write(goal_string_support)
-                        new_goal_support_list.append(pddl_problem(path_support_file))
+                        new_problem = pddl_problem(path_support_file)
+                        new_goal_support_list.append(new_problem)
+                if i == 0:
+                    keep_new_problem = new_problem
+                    problem_obs_con_support = self.goal_list[0][-1]
+                if i > 0:
+                    obs_con_support_str = self._create_obs_con_goal(keep_new_problem, i)
+                    keep_new_problem = new_problem
+                    path_obs_con_support = path_support + f"/gm_obs_con_support_{goal + 1}_obs_step_{i}.pddl"
+                    with open(path_obs_con_support, "w") as new_goal_support:
+                        new_goal_support.write(obs_con_support_str)
+                    problem_obs_con_support = pddl_problem(path_obs_con_support)
+                    list_problem_obs_con.append(problem_obs_con_support)
                 self.gm_support_model.goal_list.append(new_goal_support_list)
             print(self.observation.obs_file.loc[i, "action"] + ", " + str(time_step) + " seconds to solve")
             self._add_step(i + 1)
+            if gm_support:
+                new_action_key = [action for action in self.domain_list[i + 1].action_dict.keys() if f"OBS_PRECONDITION_{i + 1}" in action][0]
+                action = self.domain_list[i + 1].action_dict[new_action_key]
+                print(gr_model._is_action_possible(action,
+                                           problem_obs_con_support.start_fluents,
+                                           self.observation.obs_file.loc[i, "action"]))
             try:
                 time_step = 5
                 t = threading.Thread(target=self._thread_solve,
@@ -339,8 +368,10 @@ class prap_model(gr_model.gr_model):
             for gl in self.gm_support_model.goal_list[1:]:
                 for g in gl:
                     os.remove(g.problem_path)
-        #for i in range(step,0,-1):
-            #self._remove_step(i)
+            for obs_con in list_problem_obs_con:
+                os.remove(obs_con.problem_path)
+        for i in range(step,0,-1):
+            self._remove_step(i)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
