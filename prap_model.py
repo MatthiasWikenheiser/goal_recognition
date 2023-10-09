@@ -179,7 +179,7 @@ class prap_model(gr_model.gr_model):
                                          observation_name = self.observation.name)
                                          #, observation_name= self.observation.name)
 
-    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False):
+    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False, _i = 1):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
@@ -214,7 +214,7 @@ class prap_model(gr_model.gr_model):
         while i < step and not domain_bug:
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
-            print("step:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
+            print("step:", _i, ",time elapsed:", round(step_time - start_time,2), "s")
             if gm_support:
                 #print(self._create_obs_action(i+1))
                 new_goal_support_list = []
@@ -249,7 +249,7 @@ class prap_model(gr_model.gr_model):
                 print(action_possible)
                 if not action_possible:
                     error_action_possible = f"error in observation: {self.observation.observation_path}\n"
-                    error_action_possible += f"error caused by observation: {self.observation.obs_file.loc[i, "action"]}\n"
+                    error_action_possible += f"error caused by observation: {self.observation.obs_file.loc[i, 'action']}\n"
                     error_action_possible += "action not possible:\n"
                     error_action_possible += action.action + "\n\n\n"
                     error_action_possible += "state at moment of error: \n"
@@ -285,6 +285,10 @@ class prap_model(gr_model.gr_model):
                         time.sleep(1)
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                     failure = True
+            if i> 0 and i % 50 == 0:
+                print("reached 50 steps, set failure and mff_bug to true")
+                failure = True
+                time.sleep(5)
             if not failure:
                 self.steps_observed.append(self.task_thread_solve)
                 result_probs = self._calc_prob(i + 1)
@@ -305,8 +309,11 @@ class prap_model(gr_model.gr_model):
                         if "unknown optimization method" in read_error:
                             mff_bug = True
                             domain_bug = True
+                            os.remove(self.path_error_env + error_file)
                         else:
                             domain_bug = True
+                if i> 0 and i % 50 == 0:
+                    mff_bug = True
                 if mff_bug:
                     print("-------bug reached---- wait 40 s")
                     time.sleep(40)
@@ -341,7 +348,13 @@ class prap_model(gr_model.gr_model):
                     print("continue check")
                     time.sleep(10)
                     self.bug_prap_model.perform_solve_observed(step = -1, priors = priors, beta= beta,
-                                                          multiprocess= multiprocess, gm_support= gm_support)
+                                                          multiprocess= multiprocess, gm_support= gm_support, _i = i+1)
+                    os.remove(bug_path + f'/{self.planner}')
+                    os.remove(bug_path + "domain_root.pddl")
+                    for gm_support_goal in gm_support_step_goals:
+                        os.remove(bug_path + gm_support_goal)
+                    os.remove(bug_path + "bug_observation_left.csv")
+                    os.rmdir(bug_path)
                 if not mff_bug:
                     failure_task = metric_ff_solver()
                     failure_task.problem = self.goal_list[i + 1]
@@ -376,6 +389,7 @@ class prap_model(gr_model.gr_model):
                     self.prob_nrmlsd_dict_list.append(result_probs[1])
                     self.predicted_step[i + 1] = self._predict_step(step=i)
             i += 1
+            _i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         if gm_support:
             for gl in self.gm_support_model.goal_list[1:]:
