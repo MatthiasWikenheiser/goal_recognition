@@ -145,6 +145,7 @@ class prap_model(gr_model.gr_model):
         if step == 1:
             shutil.copy(f'{self.planner}', path + f'/{self.planner}')
     def _remove_step(self, step = 1):
+        self._remove_current_step = step
         path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"
         if os.path.exists(path):
             path_domain = self.domain_list[step].domain_path
@@ -178,6 +179,80 @@ class prap_model(gr_model.gr_model):
                                          base_domain = base_domain,
                                          observation_name = self.observation.name)
                                          #, observation_name= self.observation.name)
+
+    def test_observations(self):
+        """tests whether the fiven observation file is valid"""
+        step = self.observation.obs_len
+        self.test_path = ""
+        for el in self.domain_root.domain_path.split("/")[:-1]:
+            self.test_path += el + "/"
+        self.test_path += "test/"
+        if not os.path.exists(self.test_path):
+            os.mkdir(self.test_path)
+        if self.changed_domain_root is None:
+            self.gm_test_model = gm_model.gm_model(self.domain_root, self.goal_list[0],
+                                                      self.observation, self.planner)
+        else:
+            self.gm_test_model = gm_model.gm_model(self.changed_domain_root, self.goal_list[0],
+                                                      self.observation, self.planner)
+        self.gm_test_model.domain_temp = self.domain_root
+        list_problem_obs_con = []
+        i = 0
+        #step = 3
+        while i < step:
+            cur_ob = self.observation.obs_file.loc[i, "action"]
+            new_goal_test_list = []
+            print(f'step {i+1 }: {cur_ob}')
+            for goal in range(len(self.goal_list[-1])):
+                if self.goal_list[-1][goal].name in self.observation.obs_file.loc[i, "goals_remaining"]:
+                    goal_string_test = self.gm_test_model._create_obs_goal(goal_idx=goal, step=i + 1)
+                    path_test_file = self.test_path + f"/gm_test_goal_{goal + 1}_obs_step_{i}.pddl"
+                    with open(path_test_file, "w") as new_goal_test:
+                        new_goal_test.write(goal_string_test)
+                    new_problem = pddl_problem(path_test_file)
+                    new_goal_test_list.append(new_problem)
+            self.goal_list.append(new_goal_test_list)
+            if i == 0:
+                keep_new_problem = new_problem
+                problem_obs_con_test = self.goal_list[0][-1]
+            if i > 0:
+                obs_con_test_str = self._create_obs_con_goal(keep_new_problem, i)
+                keep_new_problem = new_problem
+                path_obs_con_test = self.test_path + f"gm_obs_con_test_{goal + 1}_obs_step_{i}.pddl"
+                with open(path_obs_con_test, "w") as new_goal_test:
+                    new_goal_test.write(obs_con_test_str)
+                problem_obs_con_test = pddl_problem(path_obs_con_test)
+                list_problem_obs_con.append(problem_obs_con_test)
+            self.gm_test_model.goal_list.append(new_goal_test_list)
+            domain_test_string = self._create_obs_domain(i+1)
+            path_obs_con_domain = self.test_path + f"domain_obs_step_{i+1}.pddl"
+            with open(path_obs_con_domain, "w") as new_domain_test:
+                new_domain_test.write(domain_test_string)
+            self.domain_list.append(pddl_domain(path_obs_con_domain))
+            new_action_key = \
+            [action for action in self.domain_list[i + 1].action_dict.keys() if f"OBS_PRECONDITION_{i + 1}" in action][
+                0]
+            action = self.domain_list[i + 1].action_dict[new_action_key]
+            action_possible = gr_model._is_action_possible(action,
+                                                           problem_obs_con_test.start_fluents,
+                                                           cur_ob)
+            print(f"action_possible: {action_possible}")
+            i+=1
+        for gl in self.gm_test_model.goal_list[1:]:
+            for g in gl:
+                os.remove(g.problem_path)
+        self.domain_list = self.domain_list[:1]
+        self.goal_list = self.goal_list[:1]
+        for i in range(step):
+            os.remove(self.test_path + f"domain_obs_step_{i+1}.pddl")
+        for o in list_problem_obs_con:
+            os.remove(o.problem_path)
+        os.rmdir(self.test_path)
+
+
+
+
+
 
     def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False, _i = 1):
         """
@@ -255,8 +330,9 @@ class prap_model(gr_model.gr_model):
                     error_action_possible += "state at moment of error: \n"
                     for fluent in problem_obs_con_support.start_fluents:
                         error_action_possible += f"{fluent}\n"
-                    path_error_action_possible = (self.path_error_env + "error_action_possible_ " + self.observation.name +
-                                                  "_step_" + i+1 + ".txt")
+                    corrected_observation_name = self.observation.observation_path.split("/")[-3] + "_" + self.observation.observation_path.split("/")[-2]
+                    path_error_action_possible = (self.path_error_env + "error_action_possible_ " + corrected_observation_name + "_" + self.observation.name +
+                                                  "_step_" + str(i+1) + ".txt")
                     with open(path_error_action_possible, "w") as new_goal_support:
                         new_goal_support.write(error_action_possible)
             try:
@@ -285,7 +361,7 @@ class prap_model(gr_model.gr_model):
                         time.sleep(1)
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                     failure = True
-            if i> 0 and i % 50 == 0:
+            if i> 0 and (i+1) % 50 == 0:
                 print("reached 50 steps, set failure and mff_bug to true")
                 failure = True
                 time.sleep(5)
@@ -312,8 +388,9 @@ class prap_model(gr_model.gr_model):
                             os.remove(self.path_error_env + error_file)
                         else:
                             domain_bug = True
-                if i> 0 and i % 50 == 0:
+                if i> 0 and (i+1) % 50 == 0:
                     mff_bug = True
+                    domain_bug = True
                 if mff_bug:
                     print("-------bug reached---- wait 40 s")
                     time.sleep(40)
@@ -348,7 +425,7 @@ class prap_model(gr_model.gr_model):
                     print("continue check")
                     time.sleep(10)
                     self.bug_prap_model.perform_solve_observed(step = -1, priors = priors, beta= beta,
-                                                          multiprocess= multiprocess, gm_support= gm_support, _i = i+1)
+                                                          multiprocess= multiprocess, gm_support= gm_support, _i = _i)
                     os.remove(bug_path + f'/{self.planner}')
                     os.remove(bug_path + "domain_root.pddl")
                     for gm_support_goal in gm_support_step_goals:
@@ -397,8 +474,8 @@ class prap_model(gr_model.gr_model):
                     os.remove(g.problem_path)
             for obs_con in list_problem_obs_con:
                 os.remove(obs_con.problem_path)
-        for i in range(step,0,-1):
-            self._remove_step(i)
+        for j in range(i,0,-1):
+            self._remove_step(j)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
@@ -436,23 +513,44 @@ class prap_model(gr_model.gr_model):
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=False):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
-    toy_example_domain = pddl_domain('domain.pddl')
-    problem_a = pddl_problem('problem_A.pddl')
-    problem_b = pddl_problem('problem_B.pddl')
-    problem_c = pddl_problem('problem_C.pddl')
-    problem_d = pddl_problem('problem_D.pddl')
-    problem_e = pddl_problem('problem_E.pddl')
-    problem_f = pddl_problem('problem_F.pddl')
-    toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
-    obs_toy_example = pddl_observations('Observations.csv')
-    model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
-    print(model.hash_code)
-    print(model.path_error_env)
-    print(model.error_write_files)
-    model.perform_solve_optimal(multiprocess=True)
-    print(model.steps_optimal.plan)
+    #toy_example_domain = pddl_domain('domain.pddl')
+    #problem_a = pddl_problem('problem_A.pddl')
+    #problem_b = pddl_problem('problem_B.pddl')
+    #problem_c = pddl_problem('problem_C.pddl')
+    #problem_d = pddl_problem('problem_D.pddl')
+    #problem_e = pddl_problem('problem_E.pddl')
+    #problem_f = pddl_problem('problem_F.pddl')
+    #toy_example_problem_list= [problem_a, problem_b, problem_c, problem_d, problem_e, problem_f]
+    #obs_toy_example = pddl_observations('Observations.csv')
+    #model = prap_model(toy_example_domain, toy_example_problem_list, obs_toy_example)
+    #print(model.hash_code)
+    #print(model.path_error_env)
+    #print(model.error_write_files)
+    #model.perform_solve_optimal(multiprocess=True)
+    #print(model.steps_optimal.plan)
 
-    model.perform_solve_observed(multiprocess=True)
-    print(model.predicted_step)
-    print(model.prob_nrmlsd_dict_list)
+    #model.perform_solve_observed(multiprocess=True)
+    #print(model.predicted_step)
+    #print(model.prob_nrmlsd_dict_list)
+    model_no = 11
+    observation = '/home/mwiubuntu/Seminararbeit/Interaction Logs/model_11/Session1-StationA/1_log_Salmonellosis.csv'
+    crystal_island = pddl_domain(
+        f"/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/{model_no}_crystal_island_domain.pddl")
+    task_crystal_island_problem_list = [pddl_problem(
+        f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_1_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_2_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_3_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_4_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_5_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_6_crystal_island_problem.pddl'),
+                                        pddl_problem(
+                                            f'/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/model_{model_no}_goal_7_crystal_island_problem.pddl')]
+    obs = pddl_observations(observation)
+    model = prap_model(crystal_island, task_crystal_island_problem_list, obs)
+    model.test_observations()
 
