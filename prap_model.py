@@ -198,7 +198,7 @@ class prap_model(gr_model.gr_model):
         self.gm_test_model.domain_temp = self.domain_root
         list_problem_obs_con = []
         i = 0
-        #step = 3
+        step = 3
         while i < step:
             cur_ob = self.observation.obs_file.loc[i, "action"]
             new_goal_test_list = []
@@ -236,6 +236,10 @@ class prap_model(gr_model.gr_model):
             action_possible = gr_model._is_action_possible(action,
                                                            problem_obs_con_test.start_fluents,
                                                            cur_ob)
+            print(self.domain_list[i + 1].constants)
+            print(self.domain_list[i + 1].predicates)
+            print(self.domain_list[i + 1].predicates_dict)
+
             print(f"action_possible: {action_possible}")
             i+=1
         for gl in self.gm_test_model.goal_list[1:]:

@@ -14,6 +14,7 @@ class pddl_domain:
         self.types = self._get_types()
         self.constants = self._get_constants()
         self.predicates = self._get_predicates()
+        self.predicates_dict = self._get_predicates_params()
         self.functions = self._get_functions()
     class pddl_action:
         """PDDL action data structure for actions within within a pddl_domain"""
@@ -151,6 +152,28 @@ class pddl_domain:
             def __init__(self, parameter, parameter_type):
                 self.parameter = parameter
                 self.parameter_type = parameter_type
+    def _get_predicates_params(self):
+        dict_predicates = {}
+        for predicate in self.predicates:
+            predicate = predicate.replace("(", "").replace(")", "")
+            if len(predicate.split(" ")) == 1:
+                dict_predicates[predicate] = []
+            else:
+                predicate_split = predicate.split(" ")
+                i = 1
+                vars = []
+                collect_params = []
+                while i < len(predicate_split):
+                    if "?" in predicate_split[i]:
+                        vars.append(predicate_split[i])
+                    elif predicate_split[i] != "-":
+                        parameter_type = predicate_split[i]
+                        for c in [(var, parameter_type) for var in vars]:
+                            collect_params.append(c)
+                        vars = []
+                    i+=1
+                dict_predicates[predicate_split[0]] = collect_params
+        return dict_predicates
     def _domain_path(self, domain_path):
         if len(domain_path.split("/")) == 1:
             return os.getcwd() + "/" + domain_path
@@ -224,7 +247,19 @@ class pddl_domain:
                         parse = False
                     j = j+1
             i=i+1
-        return predicates_list
+        cleaned_predicates_list = []
+        for el in predicates_list:
+            el = el.replace("(", "").replace(")", "")
+            el_string = "("
+            for e in el.split(" "):
+                if e.startswith("-") and len(e) > 1:
+                    el_string += "- " + e[1:] + " "
+                else:
+                    el_string += e + " "
+            el_string = el_string[:-1] + ")"
+            el_string = el_string.replace("  "," ")
+            cleaned_predicates_list.append(el_string)
+        return cleaned_predicates_list
     def _get_functions(self):
         idx_strt = self.domain.find("(:functions")
         idx_end = idx_strt + self.domain[idx_strt:].find("(:",1)
