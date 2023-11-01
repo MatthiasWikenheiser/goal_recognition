@@ -100,7 +100,7 @@ def _recursive_check_precondition(pddl_action, start_fluents, inside_when = Fals
                     return False
         else:
             if "(not(" in parse_string:
-                rm_not = re.findall('\(\w+-*_*\w*[\s?\w+]*\)', _clean_literal(parse_string))[0]
+                rm_not = re.findall('\(\w+-*_*\w*[\s*\w+\-*_*\w+\-*_*\w+\-*_*\w+\-*_*]*\)', _clean_literal(parse_string))[0]
                 if rm_not not in start_fluents:
                     return True
                 else:
