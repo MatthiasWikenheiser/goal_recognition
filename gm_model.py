@@ -137,6 +137,7 @@ class gm_model(gr_model.gr_model):
         new_goal = new_goal + f"(:domain {self.domain_root.name})"
         new_goal = new_goal + "\n(:objects)"
         new_goal = new_goal + "\n(:init "
+        #print("step from _create_obs_goal: ", step)
         start_fluents = self._create_new_start_fluents(goal_idx, step)
         for start_fluent in start_fluents:
             new_goal = new_goal + "\n" + start_fluent
@@ -151,6 +152,7 @@ class gm_model(gr_model.gr_model):
         new_goal = new_goal +f"\n(:metric minimize ({goal.metric_min_func}))\n)"
         return new_goal
     def _create_new_start_fluents(self, goal_idx, step = 1):
+        #print(step)
         action_step = self.observation.obs_action_sequence.loc[step-1]
         action_title = action_step.split(" ")[0]
         goal = self.goal_list[step-1][goal_idx] #some unkown bug
@@ -165,6 +167,8 @@ class gm_model(gr_model.gr_model):
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
         effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
+        #if "TALK" in action_title:
+        #print(step, action_step)
         #print("effects: ", effects)
         functions = [function[1:-1] for function in domain.functions]
         new_start_fluents = [x for x in goal.start_fluents] # = would lead to pointer identity
