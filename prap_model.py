@@ -269,16 +269,16 @@ class prap_model(gr_model.gr_model):
             if not action_possible or not params_in_constants:
                 self.found_errors.append(dict_error)
             i+=1
-        #for gl in self.gm_test_model.goal_list[1:]:
-            #for g in gl:
-                #os.remove(g.problem_path)
-        #self.domain_list = self.domain_list[:1]
-        #self.goal_list = self.goal_list[:1]
-        #for i in range(step):
-            #os.remove(self.test_path + f"domain_obs_step_{i+1}.pddl")
-        #for o in list_problem_obs_con:
-            #os.remove(o.problem_path)
-        #os.rmdir(self.test_path)
+        for gl in self.gm_test_model.goal_list[1:]:
+            for g in gl:
+                os.remove(g.problem_path)
+        self.domain_list = self.domain_list[:1]
+        self.goal_list = self.goal_list[:1]
+        for i in range(step):
+            os.remove(self.test_path + f"domain_obs_step_{i+1}.pddl")
+        for o in list_problem_obs_con:
+            os.remove(o.problem_path)
+        os.rmdir(self.test_path)
     def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False, _i = 1):
         """
         BEFORE running this, RUN perform_solve_optimal!

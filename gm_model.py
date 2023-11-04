@@ -23,7 +23,8 @@ class gm_model(gr_model.gr_model):
         """
         super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
-    def _recursive_effect_check(self, parse_string, zipped_parameters, inside_when=False, key_word=None):
+    def _recursive_effect_check(self, parse_string, zipped_parameters, start_fluents,
+                                inside_when=False, key_word=None, is_consequence = False):
         effects = []
         string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n", "")
         if string_cleaned_blanks.startswith("(when"):
@@ -37,7 +38,9 @@ class gm_model(gr_model.gr_model):
             split_list = gr_model._split_recursive_and_or(parse_string, key_word)
             if inside_when:
                 for split_element in split_list:
-                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)
+                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, start_fluents,
+                                                                   inside_when=inside_when,
+                                                                   is_consequence = is_consequence)
                     is_true_list.append(is_true)
                     [effects.append(e) for e in effect if e not in effects]
                 if key_word == "and":
@@ -52,7 +55,10 @@ class gm_model(gr_model.gr_model):
                         return False, "_"
             else:
                 for split_element in split_list:
-                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters, inside_when=inside_when)
+                    is_true, effect = self._recursive_effect_check(split_element, zipped_parameters,
+                                                                   start_fluents,
+                                                                   inside_when=inside_when,
+                                                                   is_consequence= is_consequence)
                     if is_true:
                         [effects.append(e) for e in effect if e not in effects]
                 return True, effects
@@ -86,10 +92,13 @@ class gm_model(gr_model.gr_model):
                     new_string = new_string[:c + 1]
                     parse = False
                 c += 1
-            is_true, effect = self._recursive_effect_check(new_string, zipped_parameters, inside_when=True)
+            is_true, effect = self._recursive_effect_check(new_string, zipped_parameters,
+                                                           start_fluents, inside_when=True,
+                                                           is_consequence = is_consequence)
             if is_true:
                 [effects.append(e) for e in effect if e not in effects]
-                is_true, effect = self._recursive_effect_check(consequence, zipped_parameters)
+                is_true, effect = self._recursive_effect_check(consequence, zipped_parameters, start_fluents,
+                                                               inside_when= inside_when, is_consequence = True)
                 [effects.append(e) for e in effect if e not in effects]
                 return True, effects
             else:
@@ -112,24 +121,64 @@ class gm_model(gr_model.gr_model):
                     tuple_param = [zip_param for zip_param in zipped_parameters if zip_param[1] == var][0]
                     parse_string = parse_string.replace(var, tuple_param[0])
                 return True, [parse_string] + effects
+            elif "?" not in parse_string and len([op for op in ["=", ">", "<"] if op in parse_string]) > 0:
+                cleaned_comp_str = gr_model._clean_literal(parse_string)
+                comp_number = float(re.findall('\d+\d*\.*\d*', cleaned_comp_str)[0])
+                op = cleaned_comp_str[1]
+                func_var = re.findall('\(\w*-*_*\w*-*_*\w*-*_*\w*\)', cleaned_comp_str)[0]
+                state_fl = gr_model._clean_literal([fl for fl in start_fluents if func_var in fl][0])
+                state_number = float(re.findall('\d+\d*\.*\d*', state_fl)[0])
+                #the following makes this method not general applicable
+                if func_var == "(tests-remaining)":
+                    state_number -= 1
+                if op == "=":
+                    if state_number == comp_number:
+                        return True, "_"
+                    else:
+                        return False, "_"
+                if op == ">":
+                    if state_number > comp_number:
+                        return True, "_"
+                    else:
+                        return False, "_"
+                if op == "<":
+                    if state_number < comp_number:
+                        return True, "_"
+                    else:
+                        return False, "_"
             else:
-                idx = 0
-                parse = True
-                while idx < len(parse_string) and parse:
-                    if parse_string[idx] == "(":
-                        parse_string = parse_string[idx:]
-                        parse = False
-                    idx += 1
-                idx = len(parse_string) - 1
-                parse = True
-                while idx > 0 and parse:
-                    if parse_string[idx] == ")":
-                        parse_string = parse_string[:idx + 1]
-                        parse = False
-                    idx -= 1
-                return True, [parse_string] + effects
-    def _call_effect_check(self, parse_string,zipped_parameters):
-        _, effects = self._recursive_effect_check(parse_string, zipped_parameters)
+                if inside_when and not is_consequence:
+                    cleaned_parse_str = gr_model._clean_literal(parse_string)
+                    if "(not" not in cleaned_parse_str:
+                        if cleaned_parse_str in [gr_model._clean_literal(fl) for fl in start_fluents]:
+                            return True, "_"
+                        else:
+                            return False, "_"
+                    else:
+                        rm_not = re.findall('\(\w+-*_*\w*[\s*\w+\-*_*\w+\-*_*\w+\-*_*\w+\-*_*]*\)',
+                                            cleaned_parse_str)[0]
+                        if rm_not in [gr_model._clean_literal(fl) for fl in start_fluents]:
+                            return False, "_"
+                        else:
+                            return True, "_"
+                else:
+                    idx = 0
+                    parse = True
+                    while idx < len(parse_string) and parse:
+                        if parse_string[idx] == "(":
+                            parse_string = parse_string[idx:]
+                            parse = False
+                        idx += 1
+                    idx = len(parse_string) - 1
+                    parse = True
+                    while idx > 0 and parse:
+                        if parse_string[idx] == ")":
+                            parse_string = parse_string[:idx + 1]
+                            parse = False
+                        idx -= 1
+                    return True, [parse_string] + effects
+    def _call_effect_check(self, parse_string,zipped_parameters, start_fluents):
+        _, effects = self._recursive_effect_check(parse_string, zipped_parameters, start_fluents)
         return [effect for effect in effects if effect != "_"]
     def _create_obs_goal(self, goal_idx = 0, step = 1):
         goal = self.goal_list[-1][goal_idx]
@@ -166,7 +215,7 @@ class gm_model(gr_model.gr_model):
         pddl_action = domain.action_dict[action_title]
         action_parameters = [param.parameter for param in pddl_action.action_parameters]
         zipped_parameters = list(zip(action_objects, action_parameters))
-        effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters)
+        effects = self._call_effect_check(pddl_action.action_effects, zipped_parameters, goal.start_fluents)
         #if "TALK" in action_title:
         #print(step, action_step)
         #print("effects: ", effects)
