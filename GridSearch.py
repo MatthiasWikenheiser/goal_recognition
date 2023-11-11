@@ -79,12 +79,12 @@ class GridSearch:
         download = download[self.grid.columns]
         self.grid = pd.concat([self.grid, download])
         self.grid = self.grid.reset_index().iloc[:,1:]
-    def update_db_grid_item(self, row = None):
+    def update_db_grid_item(self, row = None, update = False):
         print("update grid")
-        self._update_db_grid_type(grid_type = 1, row = row)
+        self._update_db_grid_type(grid_type = 1, row = row, update = update)
         print("update grid_expanded")
-        self._update_db_grid_type(grid_type=2, row=row)
-    def _update_db_grid_type(self, grid_type, row=None):
+        self._update_db_grid_type(grid_type=2, row=row, update = update)
+    def _update_db_grid_type(self, grid_type, row=None, update = False):
         if grid_type == 1:
             grid = self.grid[self.grid["optimal_feasible"] == 1]
             if "reduced" not in grid.columns:
@@ -145,16 +145,42 @@ class GridSearch:
             start_new_config = max_config+1
         else:
             start_new_config = 0
-        if len(existing_actions) > 0:
+        if not update:
+            if len(existing_actions) > 0:
+                upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
+                upload_grid = upload_grid.reset_index().iloc[:, 1:]
+                upload_grid.loc[:, "config"] = (
+                            "x_config_" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
+                db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+                upload_grid.to_sql("model_grid", db_gr, if_exists='append', index=False)
+                db_gr.close()
+            if len(upload_grid) == 0:
+                print("no new configuration found")
+                return None
+        else:
+            db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+            upload_grid["optimal_feasible"] = upload_grid["optimal_feasible"].astype(int)
+            existing_rows = upload_grid[(upload_grid["hash_code_action"].isin(existing_actions))]
+            existing_rows = existing_rows.reset_index().iloc[:,1:]
+            for j in range(len(existing_rows)):
+                query_update = "UPDATE model_grid \nSET"
+                for col in [c for c in existing_rows.columns if c not in ["hash_code_model", "hash_code_action", "config"]]:
+                    if type(existing_rows.loc[j,col]) == str:
+                        query_update += f" {col} = '{existing_rows.loc[j,col]}',"
+                    else:
+                        query_update += f" {col} = {existing_rows.loc[j, col]},"
+                query_update = query_update[:-1]
+                query_update += f"\nWHERE hash_code_model = '{self.hash_code}' AND hash_code_action = '{existing_rows.loc[j, 'hash_code_action']}'"
+                db_gr.execute(query_update)
+                j += 1
+            db_gr.commit()
             upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
-        if len(upload_grid) == 0:
-            print("no new configuration found")
-            return None
-        upload_grid = upload_grid.reset_index().iloc[:,1:]
-        upload_grid.loc[:, "config"] = ("x_config_" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
-        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
-        upload_grid.to_sql("model_grid", db_gr, if_exists='append', index = False)
-        db_gr.close()
+            if len(upload_grid) > 0:
+                upload_grid = upload_grid.reset_index().iloc[:, 1:]
+                upload_grid.loc[:, "config"] = (
+                        "x_config_" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
+                upload_grid.to_sql("model_grid", db_gr, if_exists='append', index=False)
+            db_gr.close()
     def _hash_action(self, grid, row, action_list):
         action_str = ""
         for action in action_list:
