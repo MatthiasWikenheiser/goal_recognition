@@ -84,17 +84,69 @@ class GridSearch:
         self._update_db_grid_type(grid_type = 1, row = row, update = update)
         print("update grid_expanded")
         self._update_db_grid_type(grid_type=2, row=row, update = update)
+    def _create_model_grid_optimal_cost(self, model_idx, model_grid, rl = False):
+        hash_code_model = []
+        hash_code_action = []
+        goal = []
+        costs = []
+        seconds = []
+        step = []
+        action = []
+        rl_type = []
+        iterations = []
+        for i in  model_idx:
+            for g in self.model_list[i].goal_list[0]:
+                for s in self.model_list[i].steps_optimal.plan[g.name].keys():
+                    hash_code_model.append(self.hash_code)
+                    hash_code_action.append(model_grid.loc[i,"hash_code_action"])
+                    if not rl:
+                        rl_type.append(0)
+                        iterations.append(np.nan)
+                    #have to work on
+                    else:
+                        rl_type.append(1)
+                        iterations.append(np.nan)
+                    goal.append(g.name)
+                    costs.append(self.model_list[i].steps_optimal.plan_cost[g.name])
+                    seconds.append(self.model_list[i].steps_optimal.time[g.name])
+                    step.append(s)
+                    action.append(self.model_list[i].steps_optimal.plan[g.name][s])
+        result_df = pd.DataFrame({"hash_code_model": hash_code_model,
+                                  "hash_code_action": hash_code_action,
+                                  "rl_type": rl_type,
+                                  "iterations": iterations,
+                                  "goal": goal,
+                                  "costs": costs,
+                                  "seconds": seconds,
+                                  "step": step,
+                                  "action": action})
+        self.model_grid_optimal_steps = result_df[["hash_code_model","hash_code_action","rl_type","iterations","goal",
+                                                   "step", "action"]]
+        self.model_grid_optimal_costs = result_df[["hash_code_model","hash_code_action","rl_type","iterations","goal",
+                                                   "costs", "seconds"]]
+        self.model_grid_optimal_costs.drop_duplicates(subset=["hash_code_model","hash_code_action","rl_type",
+                                                                "iterations","goal"], inplace = True)
+        self.model_grid_optimal_costs = self.model_grid_optimal_costs.reset_index().iloc[:,1:]
     def _update_db_grid_type(self, grid_type, row=None, update = False):
         if grid_type == 1:
+            optimal_feasible_configs = list(self.grid["optimal_feasible"] == 1)
             grid = self.grid[self.grid["optimal_feasible"] == 1]
             if "reduced" not in grid.columns:
                 grid["reduced"] = 0
         elif grid_type == 2:
             try:
+                optimal_feasible_configs = list(self.grid_expanded["optimal_feasible"] == 1)
                 grid = self.grid_expanded[self.grid_expanded["optimal_feasible"] == 1]
             except:
                 print("grid.expanded not yet created")
                 return None
+        m = 0
+        models_feasible_idx = []
+        while m < len(optimal_feasible_configs):
+            if optimal_feasible_configs[m]:
+                models_feasible_idx.append(m)
+            m += 1
+        print("models_feasible_idx: ", models_feasible_idx)
         domain = copy(self.model_root.domain_root)
         action_list = list(domain.action_dict.keys())
         action_list.sort()
@@ -146,17 +198,34 @@ class GridSearch:
         else:
             start_new_config = 0
         if not update:
-            if len(existing_actions) > 0:
-                upload_grid = upload_grid[~(upload_grid["hash_code_action"].isin(existing_actions))]
-                upload_grid = upload_grid.reset_index().iloc[:, 1:]
-                upload_grid.loc[:, "config"] = (
-                            "x_config_" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
-                db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
-                upload_grid.to_sql("model_grid", db_gr, if_exists='append', index=False)
-                db_gr.close()
+            to_update = ~(upload_grid["hash_code_action"].isin(existing_actions))
+            upload_grid = upload_grid[to_update]
+            upload_grid.loc[:, "config"] = (
+                    "x_config_" + (pd.Series(upload_grid.index) + start_new_config).astype(str))
+            upload_grid = upload_grid.reset_index().iloc[:, 1:]
             if len(upload_grid) == 0:
                 print("no new configuration found")
                 return None
+            else:
+                db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+                upload_grid.to_sql("model_grid", db_gr, if_exists='append', index=False)
+                db_gr.close()
+                m = 0
+                to_update_model_list = list(to_update)
+                models_feasible_idx_help = []
+                while m < len(to_update_model_list):
+                    if to_update_model_list[m]:
+                        models_feasible_idx_help.append(m)
+                    m += 1
+                models_feasible_idx = models_feasible_idx_help
+                print("models_feasible_idx: ", models_feasible_idx)
+                if len(models_feasible_idx) > 0:
+                    self._create_model_grid_optimal_cost(models_feasible_idx, upload_grid)
+                    db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+                    self.model_grid_optimal_costs.to_sql("model_grid_optimal_costs", db_gr, if_exists='append',
+                                                         index=False)
+                    self.model_grid_optimal_steps.to_sql("model_grid_optimal_steps", db_gr, if_exists='append',
+                                                         index=False)
         else:
             db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
             upload_grid["optimal_feasible"] = upload_grid["optimal_feasible"].astype(int)
