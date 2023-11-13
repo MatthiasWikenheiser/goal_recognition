@@ -51,34 +51,48 @@ class GridSearch:
         self.planner = planner
         self.grid = self._create_df_action_cost()
         self.grid_item = []
-        self.path = ""
+        self.path = self._self_path()
         self.goal_list_path = []
         self.temperature_control = False
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
-    def load_db_grid(self):
+    def load_db_grid(self, rl_type = 0):
         if len(self.grid) > 1:
             print("already elements in grid")
             return None
-        query = (f"""SELECT action_conf, config, optimal_feasible, seconds
+        query_model_grid = (f"""SELECT action_conf, config, optimal_feasible, seconds
                        FROM model_grid WHERE hash_code_model = '{self.hash_code}'""")
+        query_model_optimal_costs = (f"""SELECT * FROM model_grid_optimal_costs 
+                                    WHERE hash_code_model = '{self.hash_code}' AND rl_type = {rl_type}""")
+        query_model_optimal_steps = (f"""SELECT * FROM model_grid_optimal_steps 
+                                            WHERE hash_code_model = '{self.hash_code}' AND rl_type = {rl_type}""")
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
-        download = pd.read_sql_query(query, db_gr)
+        model_grid = pd.read_sql_query(query_model_grid, db_gr)
+        self.model_grid_optimal_costs = pd.read_sql_query(query_model_optimal_costs, db_gr)
+        self.model_grid_optimal_steps = pd.read_sql_query(query_model_optimal_steps, db_gr)
         db_gr.close()
         domain = copy(self.model_root.domain_root)
         action_list = list(domain.action_dict.keys())
         action_list.sort()
         i = 0
         while i < len(action_list):
-            download[action_list[i]] = download["action_conf"].str.split("-").str[i].astype(float)
+            model_grid[action_list[i]] = model_grid["action_conf"].str.split("-").str[i].astype(float)
             self.grid[action_list[i]] = self.grid[action_list[i]].astype(float)
             i += 1
-        download.drop(columns= "action_conf", inplace=True)
-        download["config"] = download["config"].str.replace("x_", self.name + "_")
-        download = download[self.grid.columns]
-        self.grid = pd.concat([self.grid, download])
+        model_grid.drop(columns= "action_conf", inplace=True)
+        model_grid["config"] = model_grid["config"].str.replace("x_", self.name + "_")
+        model_grid = model_grid[self.grid.columns]
+        self.grid = model_grid
         self.grid = self.grid.reset_index().iloc[:,1:]
+        self.grid.loc[0,"config"] = self.grid.loc[0,"config"].replace("config_0","baseline")
+        i = 1
+        while i < len(self.grid):
+            self.grid.loc[i, "config"] = self.grid.loc[i, "config"].replace("config_" +
+                                                                            self.grid.loc[i, "config"].split("_")[-1],
+                                                                            f"config_{i-1}")
+            i += 1
+        self._reconstruct_from_db()
     def update_db_grid_item(self, row = None, update = False):
         print("update grid")
         self._update_db_grid_type(grid_type = 1, row = row, update = update)
@@ -668,8 +682,29 @@ class GridSearch:
         new_expand_grid = new_expand_grid.reset_index().iloc[:,1:]
         new_expand_grid["config"] = name_config + new_expand_grid.index.astype(str)
         self.grid_expanded = new_expand_grid
+    def _self_path(self):
+        domain_root = self.model_root.domain_root
+        domain = copy(domain_root)
+        path_pcs = domain.domain_path.split("/")
+        path = ""
+        for path_pc in path_pcs[:-1]:
+            path = path + path_pc + "/"
+        path += self.name
+        if not os.path.exists(path):
+            os.mkdir(path)
+        return path + "/"
+    def _reconstruct_from_db(self):
+        idx = 0
+        for goal in self.model_root.goal_list[0]:
+            if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
+                shutil.copy(goal.problem_path, self.path + goal.problem_path.split("/")[-1])
+            self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
+        while idx < len(self.grid):
+            self._create_domain_config(idx, model_list_type=1)
+            idx += 1
     def check_feasible_domain(self, grid_type = 1, multiprocess=True, keep_files=True, type_solver='3', weight='1',
-                              timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2):
+                              timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2,
+                              recalculate = False):
         """
         Checks whether optimal plan for all grid-items (not considering observations) can be achieved within timeout.
         :param grid_type: if grid_type = 1 self.grid is checked, with grid_type = 2 self.grid_expanded instead.
@@ -687,6 +722,13 @@ class GridSearch:
         specified temperature in celsius_stop.
         :param update_time: time interval for checking average temperature.
         """
+        if recalculate:
+            self.grid["optimal_feasible"] = np.nan
+            self.grid["seconds"] = np.nan
+            self.model_grid_optimal_costs = None
+            self.model_grid_optimal_steps = None
+            self.model_list = []
+            self.goal_list_path = []
         if grid_type == 1:
             grid = self.grid
             model_list = self.model_list
@@ -698,14 +740,6 @@ class GridSearch:
         t.start()
         domain_root = self.model_root.domain_root
         domain = copy(domain_root)
-        path_pcs = domain.domain_path.split("/")
-        path = ""
-        for path_pc in path_pcs[:-1]:
-            path = path + path_pc + "/"
-        path += self.name
-        if not os.path.exists(path):
-            os.mkdir(path)
-        self.path = path + "/"
         if not os.path.exists(self.path + f"{self.planner}"):
             os.chdir("/home/mwiubuntu/goal_recognition/")
             shutil.copy(f"{self.planner}", self.path + f"{self.planner}")
