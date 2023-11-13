@@ -255,16 +255,16 @@ class GridSearch:
                 update_model_grid_optimal_cost = \
                     self.model_grid_optimal_costs[self.model_grid_optimal_costs["hash_code_action"].isin(list_db_grid_optimal_cost)]
                 update_model_grid_optimal_cost = update_model_grid_optimal_cost.reset_index().iloc[:, 1:]
-                append_model_grid_optimal_steps = \
-                    self.model_grid_optimal_steps[~self.model_grid_optimal_steps["hash_code_action"].isin(list_db_grid_optimal_cost)]
-                append_model_grid_optimal_steps = append_model_grid_optimal_steps.reset_index().iloc[:, 1:]
-                update_model_grid_optimal_steps = \
-                    self.model_grid_optimal_steps[self.model_grid_optimal_steps["hash_code_action"].isin(list_db_grid_optimal_cost)]
-                update_model_grid_optimal_steps = update_model_grid_optimal_steps.reset_index().iloc[:, 1:]
                 db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+                to_delete_list = str(list(self.model_grid_optimal_steps["hash_code_action"].unique())).\
+                    replace("[", "(").replace("]",")")
+                query_delete_optimal_steps = f"""DELETE FROM model_grid_optimal_steps 
+                                                WHERE hash_code_action IN {to_delete_list}"""
+                db_gr.execute(query_delete_optimal_steps)
+                db_gr.commit()
                 append_model_grid_optimal_cost.to_sql("model_grid_optimal_costs", db_gr, if_exists='append',
                                                      index=False)
-                append_model_grid_optimal_steps.to_sql("model_grid_optimal_steps", db_gr, if_exists='append',
+                self.model_grid_optimal_steps.to_sql("model_grid_optimal_steps", db_gr, if_exists='append',
                                                      index=False)
                 if len(update_model_grid_optimal_cost) > 0:
                     r = 0
@@ -289,34 +289,6 @@ class GridSearch:
                                                                               AND rl_type = {update_model_grid_optimal_cost.loc[r, 'rl_type']} 
                                                                               AND iterations IS NULL
                                                                               AND goal = '{update_model_grid_optimal_cost.loc[r, 'goal']}' """
-                        db_gr.execute(query_update)
-                        r += 1
-                    db_gr.commit()
-                    r = 0
-                    while r < len(update_model_grid_optimal_steps):
-                        query_update = "UPDATE model_grid_optimal_steps \nSET"
-                        for col in [c for c in update_model_grid_optimal_steps.columns if
-                                    c not in ["hash_code_model", "hash_code_action", "rl_type", "iterations", "goal",
-                                              "step"]]:
-                            if type(update_model_grid_optimal_steps.loc[r, col]) == str:
-                                query_update += f" {col} = '{update_model_grid_optimal_steps.loc[r, col]}',"
-                            else:
-                                query_update += f" {col} = {update_model_grid_optimal_steps.loc[r, col]},"
-                        query_update = query_update[:-1]
-                        if str(update_model_grid_optimal_steps.loc[r, "iterations"]) != "nan":
-                            query_update += f"""\nWHERE hash_code_model = '{self.hash_code}' 
-                                                  AND hash_code_action = '{update_model_grid_optimal_steps.loc[r, 'hash_code_action']}'
-                                                  AND rl_type = {update_model_grid_optimal_steps.loc[r, 'rl_type']} 
-                                                  AND iterations = {update_model_grid_optimal_steps.loc[r, 'iterations']} 
-                                                  AND goal = '{update_model_grid_optimal_steps.loc[r, 'goal']}' 
-                                                  AND step = {update_model_grid_optimal_steps.loc[r, 'step']}"""
-                        else:
-                            query_update += f"""\nWHERE hash_code_model = '{self.hash_code}' 
-                                                                              AND hash_code_action = '{update_model_grid_optimal_steps.loc[r, 'hash_code_action']}'
-                                                                              AND rl_type = {update_model_grid_optimal_steps.loc[r, 'rl_type']} 
-                                                                              AND iterations IS NULL
-                                                                              AND goal = '{update_model_grid_optimal_steps.loc[r, 'goal']}' 
-                                                                              AND step = {update_model_grid_optimal_steps.loc[r, 'step']}"""
                         db_gr.execute(query_update)
                         r += 1
                     db_gr.commit()
