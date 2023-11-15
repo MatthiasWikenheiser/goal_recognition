@@ -24,8 +24,6 @@ class metric_ff_solver:
         self.problem = []
         self.solved = 0 #0:not tried yet, 1: success, 2:timeout
         self.planner = planner
-
-        pass
     def _legal_plan(self, summary, file_path=None):
         if summary =="":
             print("summary empty")

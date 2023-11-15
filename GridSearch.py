@@ -61,7 +61,7 @@ class GridSearch:
         if len(self.grid) > 1:
             print("already elements in grid")
             return None
-        query_model_grid = (f"""SELECT action_conf, config, optimal_feasible, seconds
+        query_model_grid = (f"""SELECT hash_code_action, action_conf, config, optimal_feasible, seconds
                        FROM model_grid WHERE hash_code_model = '{self.hash_code}'""")
         query_model_optimal_costs = (f"""SELECT * FROM model_grid_optimal_costs 
                                     WHERE hash_code_model = '{self.hash_code}' AND rl_type = {rl_type}""")
@@ -69,6 +69,8 @@ class GridSearch:
                                             WHERE hash_code_model = '{self.hash_code}' AND rl_type = {rl_type}""")
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
         model_grid = pd.read_sql_query(query_model_grid, db_gr)
+        hash_code_action_list = list(model_grid["hash_code_action"])
+        model_grid.drop(columns=["hash_code_action"], inplace = True)
         self.model_grid_optimal_costs = pd.read_sql_query(query_model_optimal_costs, db_gr)
         self.model_grid_optimal_steps = pd.read_sql_query(query_model_optimal_steps, db_gr)
         db_gr.close()
@@ -92,7 +94,7 @@ class GridSearch:
                                                                             self.grid.loc[i, "config"].split("_")[-1],
                                                                             f"config_{i-1}")
             i += 1
-        self._reconstruct_from_db()
+        self._reconstruct_from_db(hash_code_action_list=hash_code_action_list)
     def update_db_grid_item(self, row = None, update = False):
         print("update grid")
         self._update_db_grid_type(grid_type = 1, row = row, update = update)
@@ -693,7 +695,7 @@ class GridSearch:
         if not os.path.exists(path):
             os.mkdir(path)
         return path + "/"
-    def _reconstruct_from_db(self):
+    def _reconstruct_from_db(self, hash_code_action_list):
         idx = 0
         for goal in self.model_root.goal_list[0]:
             if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
@@ -702,6 +704,39 @@ class GridSearch:
         while idx < len(self.grid):
             self._create_domain_config(idx, model_list_type=1)
             idx += 1
+        i = 0
+        for model in self.model_list:
+            model.steps_optimal.problem = model.goal_list[0]
+            model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
+                                                for i in range(len(model.steps_optimal.problem))]
+            model.steps_optimal.domain = model.domain_root
+            model.steps_optimal.domain_path = model.steps_optimal.domain.domain_path.split("/")[-1]
+            model.steps_optimal.solved = 1
+            model.steps_optimal.type_solver = '3'
+            model.steps_optimal.weight = '1'
+            model.steps_optimal.processes = {}
+            model.steps_optimal.mp_output_goals = {}
+            model.steps_optimal.mp_goal_computed = {}
+            model.steps_optimal.path = model.steps_optimal._path()
+            opt_steps = self.model_grid_optimal_steps[self.model_grid_optimal_steps["hash_code_action"] \
+                                                      == hash_code_action_list[i]]
+            opt_costs = self.model_grid_optimal_costs[self.model_grid_optimal_costs["hash_code_action"] \
+                                                      == hash_code_action_list[i]]
+            for goal in opt_steps["goal"].unique():
+                opt_steps_goal = opt_steps[opt_steps["goal"] == goal][["step", "action"]]
+                opt_steps_goal.sort_values(by="step", inplace = True)
+                opt_steps_goal = opt_steps_goal.reset_index().iloc[:,1:]
+                step_dict = {}
+                for j in range(len(opt_steps_goal)):
+                    step_dict[opt_steps_goal.loc[j,"step"]] = opt_steps_goal.loc[j,"action"]
+                model.steps_optimal.plan[goal] = step_dict
+                model.steps_optimal.plan_achieved[goal] = 1
+                model.steps_optimal.plan_cost[goal] = opt_costs.loc[opt_costs["goal"] == goal, "costs"].iloc[0]
+                model.steps_optimal.time[goal] = opt_costs.loc[opt_costs["goal"] == goal, "seconds"].iloc[0]
+            model.mp_seconds = max([model.steps_optimal.time[g] for g in model.steps_optimal.time.keys()])
+            i += 1
+
+
     def check_feasible_domain(self, grid_type = 1, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2,
                               recalculate = False):
