@@ -58,6 +58,10 @@ class GridSearch:
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
     def load_db_grid(self, rl_type = 0):
+        """loads grid, model_grid_optimal_costs and model_grid_optimal_steps into GridSearch object
+           :param rl_type: determines whether prap/gm (rl_type = 0) or reinforcement learning (rl_type = 1)
+                           data from db are loaded.
+        """
         if len(self.grid) > 1:
             print("already elements in grid")
             return None
