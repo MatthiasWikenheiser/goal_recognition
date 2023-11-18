@@ -1,6 +1,9 @@
+import os.path
 import pickle
 import pandas as pd
 import numpy as np
+
+import gm_model
 import gr_model
 import datetime as dt
 import itertools
@@ -36,17 +39,22 @@ class GridSearch:
     A goal recognition model can as of now be of type prap_model or gm_model.
     """
     #def __init__(self, model_root, name, planner = "ff_2_1"):
-    def __init__(self,domain_root, goal_list, obs_action_sequence, name, planner = "ff_2_1"):
+    def __init__(self,domain_root, goal_list, obs_action_sequence_list, name, planner = "ff_2_1"):
         """
         :param domain_root: pddl_domain on which the goal recognition problem is solved.
         :param goal_list: list of pddl_problems, which represent the goals to assign probabilites to.
-        :param obs_action_sequence: agents observations of type _pddl_observations.
+        :param obs_action_sequence_list: agents observations of type _pddl_observations.
         :param name: name for Gridsearch-object, created directories and files contain this name.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1).
         """
+        self.obs_action_sequence_list = obs_action_sequence_list if type(obs_action_sequence_list) == list \
+            else [obs_action_sequence_list]
+        self._domain_root = domain_root
+        self._goal_list = goal_list
         self.model_root = gr_model.gr_model(domain_root = domain_root, goal_list =  goal_list,
-                                            obs_action_sequence = obs_action_sequence)
-        self.model_list = []
+                                            obs_action_sequence = self.obs_action_sequence_list[0])
+        self.model_list_optimal = []
+        self.model_dict_obs = {}
         self.name = name
         self.planner = planner
         self.grid = self._create_df_action_cost()
@@ -57,6 +65,7 @@ class GridSearch:
         self.temperature_mean_cur = 40.0  # just for init
         self.temperature_array = np.repeat(self.temperature_mean_cur, 10)
         self.hash_code = self.model_root.hash_code
+        self._is_init_gr_models = False
     def load_db_grid(self, rl_type = 0):
         """loads grid, model_grid_optimal_costs and model_grid_optimal_steps into GridSearch object
            :param rl_type: determines whether prap/gm (rl_type = 0) or reinforcement learning (rl_type = 1)
@@ -65,6 +74,9 @@ class GridSearch:
         if len(self.grid) > 1:
             print("already elements in grid")
             return None
+        if os.path.exists(self.path):
+            [os.remove(self.path + f) for f in os.listdir(self.path)]
+            print("old GridSearch folder removed")
         query_model_grid = (f"""SELECT hash_code_action, action_conf, config, optimal_feasible, seconds
                        FROM model_grid WHERE hash_code_model = '{self.hash_code}'""")
         query_model_optimal_costs = (f"""SELECT * FROM model_grid_optimal_costs 
@@ -98,7 +110,109 @@ class GridSearch:
                                                                             self.grid.loc[i, "config"].split("_")[-1],
                                                                             f"config_{i-1}")
             i += 1
-        self._reconstruct_from_db(hash_code_action_list=hash_code_action_list)
+        idx = 0
+        for goal in self.model_root.goal_list[0]:
+            if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
+                shutil.copy(goal.problem_path, self.path + goal.problem_path.split("/")[-1])
+            self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
+        while idx < len(self.grid):
+            if self.model_root.crystal_island:
+                if idx == 0:
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(
+                                                       self.model_root._crystal_island_salmonellosis_path))
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(self.model_root._crystal_island_ecoli_path))
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(self.model_root._crystal_island_default_path))
+
+                else:
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(self.model_list_optimal[idx-1]._crystal_island_ecoli_path))
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(self.model_list_optimal[idx-1]._crystal_island_salmonellosis_path))
+                    self._create_domain_config(idx, model_list_type=1,
+                                               domain_crystal_island= \
+                                                   pddl_domain(self.model_list_optimal[idx-1]._crystal_island_default_path))
+            else:
+                self._create_domain_config(idx, model_list_type=1)
+            idx += 1
+        hash_action_idx = 0
+        for model in self.model_list_optimal:
+            self._reconstruct_from_db(model = model, hash_code_action=hash_code_action_list[hash_action_idx])
+            hash_action_idx += 1
+    def _init_gr_models(self,model_types, planner):
+        model_types = model_types if type(model_types) == list else [model_types]
+        action_list = list(self._domain_root.action_dict.keys())
+        action_list.sort()
+        for model_type in model_types:
+            dict_obs = {}
+            for i in range(len(self.model_list_optimal)):
+                model_list_obs = []
+                _, hash_code_action = self._hash_action(self.grid, i, action_list)
+                for j in range(len(self.obs_action_sequence_list)):
+                    if model_type == "gm_model":
+                        model = gm_model(domain_root=self._domain_root,
+                                         goal_list=self._goal_list,
+                                         obs_action_sequence=self.obs_action_sequence_list[j],
+                                         planner=planner)
+                    if model_type == "prap_model":
+                        model = prap_model(domain_root=self._domain_root,
+                                           goal_list=self._goal_list,
+                                           obs_action_sequence=self.obs_action_sequence_list[j],
+                                           planner=planner)
+                    model_list_obs.append(model)
+                dict_obs[i] = model_list_obs
+                dict_obs[hash_code_action] = model_list_obs
+            self.model_dict_obs[model_type] = dict_obs
+            self._is_init_gr_models = True
+
+    def run(self, model_types = "gm_model", planner = "ff_2_1"):
+        if not self._is_init_gr_models:
+            print("init goal regocnition models")
+            self._init_gr_models(model_types = model_types, planner = planner)
+        print("run GridSearch")
+
+
+
+
+
+
+
+    def _reconstruct_from_db(self, model, hash_code_action):
+        model.steps_optimal.problem = model.goal_list[0]
+        model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
+                                            for i in range(len(model.steps_optimal.problem))]
+        model.steps_optimal.domain = model.domain_root
+        model.steps_optimal.domain_path = model.steps_optimal.domain.domain_path.split("/")[-1]
+        model.steps_optimal.solved = 1
+        model.steps_optimal.type_solver = '3'
+        model.steps_optimal.weight = '1'
+        model.steps_optimal.processes = {}
+        model.steps_optimal.mp_output_goals = {}
+        model.steps_optimal.mp_goal_computed = {}
+        model.steps_optimal.path = model.steps_optimal._path()
+        opt_steps = self.model_grid_optimal_steps[self.model_grid_optimal_steps["hash_code_action"] \
+                                                  == hash_code_action]
+        opt_costs = self.model_grid_optimal_costs[self.model_grid_optimal_costs["hash_code_action"] \
+                                                  == hash_code_action]
+        for goal in opt_steps["goal"].unique():
+            opt_steps_goal = opt_steps[opt_steps["goal"] == goal][["step", "action"]]
+            opt_steps_goal.sort_values(by="step", inplace = True)
+            opt_steps_goal = opt_steps_goal.reset_index().iloc[:,1:]
+            step_dict = {}
+            for j in range(len(opt_steps_goal)):
+                step_dict[opt_steps_goal.loc[j,"step"]] = opt_steps_goal.loc[j,"action"]
+            model.steps_optimal.plan[goal] = step_dict
+            model.steps_optimal.plan_achieved[goal] = 1
+            model.steps_optimal.plan_cost[goal] = opt_costs.loc[opt_costs["goal"] == goal, "costs"].iloc[0]
+            model.steps_optimal.time[goal] = opt_costs.loc[opt_costs["goal"] == goal, "seconds"].iloc[0]
+        model.mp_seconds = max([model.steps_optimal.time[g] for g in model.steps_optimal.time.keys()])
     def update_db_grid_item(self, row = None, update = False):
         print("update grid")
         self._update_db_grid_type(grid_type = 1, row = row, update = update)
@@ -116,8 +230,8 @@ class GridSearch:
         iterations = []
         time_stamp = []
         for i in  model_idx:
-            for g in self.model_list[i].goal_list[0]:
-                for s in self.model_list[i].steps_optimal.plan[g.name].keys():
+            for g in self.model_list_optimal[i].goal_list[0]:
+                for s in self.model_list_optimal[i].steps_optimal.plan[g.name].keys():
                     hash_code_model.append(self.hash_code)
                     hash_code_action.append(model_grid.loc[i,"hash_code_action"])
                     if not rl:
@@ -128,11 +242,11 @@ class GridSearch:
                         rl_type.append(1)
                         iterations.append(np.nan)
                     goal.append(g.name)
-                    costs.append(self.model_list[i].steps_optimal.plan_cost[g.name])
-                    seconds.append(self.model_list[i].steps_optimal.time[g.name])
+                    costs.append(self.model_list_optimal[i].steps_optimal.plan_cost[g.name])
+                    seconds.append(self.model_list_optimal[i].steps_optimal.time[g.name])
                     time_stamp.append(tmstmp)
                     step.append(s)
-                    action.append(self.model_list[i].steps_optimal.plan[g.name][s])
+                    action.append(self.model_list_optimal[i].steps_optimal.plan[g.name][s])
         result_df = pd.DataFrame({"hash_code_model": hash_code_model,
                                   "hash_code_action": hash_code_action,
                                   "rl_type": rl_type,
@@ -396,9 +510,21 @@ class GridSearch:
                 f["config"] = self.name + "_config_" + f.index.astype(str)
                 self.grid = pd.concat([self.grid, f])
                 self.grid = self.grid.reset_index().iloc[:, 1:]
-    def _create_domain_config(self, idx, model_list_type = 1):
-        #model_list_type == 1: model_list, == 2: model_reduce_cur, model_list_type == 3: model_list_expanded
-        domain = copy(self.model_root.domain_root)
+    def _create_domain_config(self, idx, model_list_type = 1, domain_crystal_island = None):
+        # model_list_type == 1: model_list, == 2: model_reduce_cur, model_list_type == 3: model_list_expanded
+        if self.model_root.crystal_island:
+            domain = copy(domain_crystal_island)
+            print("domain_crystal_island.domain_path: ", domain_crystal_island.domain_path)
+            if "_ecoli" in domain.domain_path.split("/")[-1]:
+                cur_solution = "_ecoli"
+            elif "_salmonellosis" in domain.domain_path.split("/")[-1]:
+                cur_solution = "_salmonellosis"
+            else:
+                cur_solution = ""
+            print("cur_solution: ", cur_solution)
+        else:
+            domain = copy(self.model_root.domain_root)
+            cur_solution = ""
         if model_list_type == 1:
             config_idx = self.grid.iloc[idx, :]
         if model_list_type == 2 or model_list_type == 3:
@@ -426,25 +552,41 @@ class GridSearch:
             new_domain = new_domain + domain.action_dict[action].action + "\n"
         new_domain = new_domain + "\n)"
         if model_list_type == 1:
-            with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
+            with open(self.path + config_idx["config"] + cur_solution + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
-            self.model_list.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
-                                          self.goal_list_path, self.model_root.observation, planner = self.planner))
+            if self.model_root.crystal_island:
+                if cur_solution == "":
+                    print("self.path: ", self.path)
+
+                    self.model_list_optimal.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"]
+                                                                                 + ".pddl"),self.goal_list_path,
+                                                                     self.model_root.observation, planner=self.planner))
+            else:
+                self.model_list_optimal.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+                                              self.goal_list_path, self.model_root.observation, planner = self.planner))
         elif model_list_type == 2:
-            with open(self.path_reduce + config_idx["config"] + ".pddl", "w") as domain_config:
+            with open(self.path_reduce + config_idx["config"] + cur_solution + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
             self.model_reduce_cur = gr_model.gr_model(pddl_domain(self.path_reduce + config_idx["config"] + ".pddl"),
                                                     self.goal_list_path, self.model_root.observation,
                                                     planner=self.planner)
         if model_list_type == 3:
-            with open(self.path + config_idx["config"] + ".pddl", "w") as domain_config:
+            with open(self.path + config_idx["config"] + cur_solution + ".pddl", "w") as domain_config:
                 domain_config.write(new_domain)
-            self.model_list_expanded.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
-                                                   self.goal_list_path, self.model_root.observation,
-                                                   planner=self.planner))
+            if self.model_root.crystal_island:
+                if cur_solution == "":
+                    self.model_list_expanded.append(
+                        gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+                                          self.goal_list_path, self.model_root.observation,
+                                          planner=self.planner))
+            else:
+                self.model_list_expanded.append(
+                    gr_model.gr_model(pddl_domain(self.path + config_idx["config"] + ".pddl"),
+                                      self.goal_list_path, self.model_root.observation,
+                                      planner=self.planner))
     def _remove_model_domain_config(self, i=0, type_grid=1):
         if type_grid == 1: #1:check_optimal_feasible 2:expand grid 3:expand grid in check_optimal_feasible
-            model_remove = self.model_list[i]
+            model_remove = self.model_list_optimal[i]
         elif type_grid == 2:
             model_remove = self.model_reduce_cur
         elif type_grid == 3:
@@ -452,7 +594,7 @@ class GridSearch:
         file_remove = model_remove.domain_root.domain_path
         os.remove(file_remove)
         if type_grid == 1:
-            self.model_list.remove(model_remove)
+            self.model_list_optimal.remove(model_remove)
         if type_grid == 3:
             self.model_list_expanded.remove(model_remove)
     def _monitor_temperature_mean(self, celsius_stop, cool_down_time, update_time):
@@ -568,10 +710,6 @@ class GridSearch:
                         self.grid_expanded.loc[idx, "optimal_feasible"] = 1
                         if multiprocess:
                             self.grid_expanded.loc[idx, "seconds"] = self.model_reduce_cur.mp_seconds
-                        # else:
-                        # keys = self.model_list[i+1].prap_steps_optimal.time.keys()
-                        # self.model_list[i+1].prap_steps_optimal.time= max([self.model_list[i+1].prap_steps_optimal.time[key]
-                        #     for key in keys])
                         if pickle:
                            save_gridsearch(self)
                     else:
@@ -626,10 +764,6 @@ class GridSearch:
                             solvable = True
                             if multiprocess:
                                 self.grid_expanded.loc[idx, "seconds"] = self.model_reduce_cur.mp_seconds
-                            # else:
-                            # keys = self.model_list[i+1].prap_steps_optimal.time.keys()
-                            # self.model_list[i+1].prap_steps_optimal.time= max([self.model_list[i+1].prap_steps_optimal.time[key]
-                            #     for key in keys])
                             if pickle:
                                 save_gridsearch(self)
                         else:
@@ -699,48 +833,6 @@ class GridSearch:
         if not os.path.exists(path):
             os.mkdir(path)
         return path + "/"
-    def _reconstruct_from_db(self, hash_code_action_list):
-        idx = 0
-        for goal in self.model_root.goal_list[0]:
-            if not os.path.exists(self.path + goal.problem_path.split("/")[-1]):
-                shutil.copy(goal.problem_path, self.path + goal.problem_path.split("/")[-1])
-            self.goal_list_path.append(pddl_problem(self.path + goal.problem_path.split("/")[-1]))
-        while idx < len(self.grid):
-            self._create_domain_config(idx, model_list_type=1)
-            idx += 1
-        i = 0
-        for model in self.model_list:
-            model.steps_optimal.problem = model.goal_list[0]
-            model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
-                                                for i in range(len(model.steps_optimal.problem))]
-            model.steps_optimal.domain = model.domain_root
-            model.steps_optimal.domain_path = model.steps_optimal.domain.domain_path.split("/")[-1]
-            model.steps_optimal.solved = 1
-            model.steps_optimal.type_solver = '3'
-            model.steps_optimal.weight = '1'
-            model.steps_optimal.processes = {}
-            model.steps_optimal.mp_output_goals = {}
-            model.steps_optimal.mp_goal_computed = {}
-            model.steps_optimal.path = model.steps_optimal._path()
-            opt_steps = self.model_grid_optimal_steps[self.model_grid_optimal_steps["hash_code_action"] \
-                                                      == hash_code_action_list[i]]
-            opt_costs = self.model_grid_optimal_costs[self.model_grid_optimal_costs["hash_code_action"] \
-                                                      == hash_code_action_list[i]]
-            for goal in opt_steps["goal"].unique():
-                opt_steps_goal = opt_steps[opt_steps["goal"] == goal][["step", "action"]]
-                opt_steps_goal.sort_values(by="step", inplace = True)
-                opt_steps_goal = opt_steps_goal.reset_index().iloc[:,1:]
-                step_dict = {}
-                for j in range(len(opt_steps_goal)):
-                    step_dict[opt_steps_goal.loc[j,"step"]] = opt_steps_goal.loc[j,"action"]
-                model.steps_optimal.plan[goal] = step_dict
-                model.steps_optimal.plan_achieved[goal] = 1
-                model.steps_optimal.plan_cost[goal] = opt_costs.loc[opt_costs["goal"] == goal, "costs"].iloc[0]
-                model.steps_optimal.time[goal] = opt_costs.loc[opt_costs["goal"] == goal, "seconds"].iloc[0]
-            model.mp_seconds = max([model.steps_optimal.time[g] for g in model.steps_optimal.time.keys()])
-            i += 1
-
-
     def check_feasible_domain(self, grid_type = 1, multiprocess=True, keep_files=True, type_solver='3', weight='1',
                               timeout=90, pickle=False, celsius_stop=72, cool_down_time=40, update_time=2,
                               recalculate = False):
@@ -766,11 +858,11 @@ class GridSearch:
             self.grid["seconds"] = np.nan
             self.model_grid_optimal_costs = None
             self.model_grid_optimal_steps = None
-            self.model_list = []
+            self.model_list_optimal = []
             self.goal_list_path = []
         if grid_type == 1:
             grid = self.grid
-            model_list = self.model_list
+            model_list = self.model_list_optimal
         elif grid_type == 2:
             grid = self.grid_expanded
             self.model_list_expanded = []
@@ -809,7 +901,6 @@ class GridSearch:
             elif grid_type == 2:
                 self._create_domain_config(idx, model_list_type=3)
             print(model_list[i].domain_root.domain_path.split("/")[-1])
-            # print([self.model_list[i].domain_list[0].action_dict[key].action_cost for key in self.model_list[-1].domain_list[0].action_dict.keys()])
             time.sleep(1)  # remove pending tasks from cpu
             while (max(psutil.cpu_percent(percpu=True)) > 30):
                 time.sleep(1)

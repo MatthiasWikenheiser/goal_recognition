@@ -165,6 +165,9 @@ class gr_model:
         self.error_write_files = os.listdir(self.path_error_env)
     def _crystal_island_solution(self):
         if self.crystal_island:
+            self._crystal_island_default_path = self.domain_root.domain_path
+            self._crystal_island_ecoli_path = self.domain_root.domain_path.replace(".pddl", "_ecoli.pddl")
+            self._crystal_island_salmonellosis_path = self.domain_root.domain_path.replace(".pddl", "_salmonellosis.pddl")
             file_name_obs = self.observation.observation_path.split("/")[-1]
             change_domain = ""
             for split_element in self.domain_root.domain_path.split("/")[:-1]:
