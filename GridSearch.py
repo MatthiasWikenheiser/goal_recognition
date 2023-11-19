@@ -171,17 +171,20 @@ class GridSearch:
                 dict_obs[hash_code_action] = model_list_obs
             self.model_dict_obs[model_type] = dict_obs
             self._is_init_gr_models = True
-
-    def run(self, model_types = "gm_model", planner = "ff_2_1"):
+    def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False):
         if not self._is_init_gr_models:
             print("init goal regocnition models")
             self._init_gr_models(model_types = model_types, planner = planner)
+        os.chdir("/home/mwiubuntu/goal_recognition/")
+        shutil.copy(f"{self.planner}", self.path + f"{self.planner}")
         print("run GridSearch")
-
-
-
-
-
+        if remove_files:
+            i = len(self.grid) -1
+            while i >= 0:
+                self._remove_model_domain_config(i)
+                i -= 1
+            [os.remove(self.goal_list_path[i].problem_path) for i in range(len(self.goal_list_path))]
+            os.remove(self.path + f"{self.planner}")
 
 
     def _reconstruct_from_db(self, model, hash_code_action):
@@ -514,14 +517,12 @@ class GridSearch:
         # model_list_type == 1: model_list, == 2: model_reduce_cur, model_list_type == 3: model_list_expanded
         if self.model_root.crystal_island:
             domain = copy(domain_crystal_island)
-            print("domain_crystal_island.domain_path: ", domain_crystal_island.domain_path)
             if "_ecoli" in domain.domain_path.split("/")[-1]:
                 cur_solution = "_ecoli"
             elif "_salmonellosis" in domain.domain_path.split("/")[-1]:
                 cur_solution = "_salmonellosis"
             else:
                 cur_solution = ""
-            print("cur_solution: ", cur_solution)
         else:
             domain = copy(self.model_root.domain_root)
             cur_solution = ""
@@ -556,8 +557,6 @@ class GridSearch:
                 domain_config.write(new_domain)
             if self.model_root.crystal_island:
                 if cur_solution == "":
-                    print("self.path: ", self.path)
-
                     self.model_list_optimal.append(gr_model.gr_model(pddl_domain(self.path + config_idx["config"]
                                                                                  + ".pddl"),self.goal_list_path,
                                                                      self.model_root.observation, planner=self.planner))
@@ -591,8 +590,13 @@ class GridSearch:
             model_remove = self.model_reduce_cur
         elif type_grid == 3:
             model_remove = self.model_list_expanded[i]
-        file_remove = model_remove.domain_root.domain_path
-        os.remove(file_remove)
+        if not self.model_root.crystal_island:
+            file_remove = model_remove.domain_root.domain_path
+            os.remove(file_remove)
+        else:
+            os.remove(model_remove._crystal_island_default_path)
+            os.remove(model_remove._crystal_island_ecoli_path)
+            os.remove(model_remove._crystal_island_salmonellosis_path)
         if type_grid == 1:
             self.model_list_optimal.remove(model_remove)
         if type_grid == 3:
@@ -897,7 +901,32 @@ class GridSearch:
                         time.sleep(1)
             print("-------------------")
             if grid_type == 1:
-                self._create_domain_config(idx, model_list_type = 1)
+                #self._create_domain_config(idx, model_list_type = 1)
+                if self.model_root.crystal_island:
+                    if idx == 0:
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(
+                                                           self.model_root._crystal_island_salmonellosis_path))
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(self.model_root._crystal_island_ecoli_path))
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(self.model_root._crystal_island_default_path))
+
+                    else:
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(self.model_list_optimal[idx-1]._crystal_island_ecoli_path))
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(self.model_list_optimal[idx-1]._crystal_island_salmonellosis_path))
+                        self._create_domain_config(idx, model_list_type=1,
+                                                   domain_crystal_island= \
+                                                       pddl_domain(self.model_list_optimal[idx-1]._crystal_island_default_path))
+                else:
+                    self._create_domain_config(idx, model_list_type = 1)
             elif grid_type == 2:
                 self._create_domain_config(idx, model_list_type=3)
             print(model_list[i].domain_root.domain_path.split("/")[-1])
