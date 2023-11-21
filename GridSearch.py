@@ -963,11 +963,12 @@ class GridSearch:
                     grid.loc[idx, "optimal_feasible"] = 0
                 if keep_files:
                     if grid.loc[idx, "optimal_feasible"] == 0:
-                        if grid_type == 1:
-                            self._remove_model_domain_config(i)
-                        elif grid_type == 2:
-                            self._remove_model_domain_config(i, type_grid=3)
-                        i -= 1
+                        if not self.model_root.crystal_island:
+                            if grid_type == 1:
+                                self._remove_model_domain_config(i)
+                            elif grid_type == 2:
+                                self._remove_model_domain_config(i, type_grid=3)
+                            i -= 1
                 else:
                     if grid_type == 1:
                         self._remove_model_domain_config(i)
