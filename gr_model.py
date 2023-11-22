@@ -293,7 +293,43 @@ class gr_model:
                 pass
         df_summary_steps = df_summary_steps[~(df_summary_steps["action"].isna())]
         df_summary_steps = df_summary_steps.reset_index().iloc[:, 1:]
-        return df_summary_agg, df_summary_steps
+        df_summary_top = self.observation.obs_file.copy()
+
+        predicted_goals = []
+        predicted_goals_no = []
+        for i in self.predicted_step.keys():
+            predicted_goals.append(str(self.predicted_step[i]).replace("'", ""))
+            predicted_goals_no.append(len(self.predicted_step[i]))
+        df_summary_top["predicted_goals"] = pd.Series(predicted_goals)
+        df_summary_top["predicted_goals_no"] = pd.Series(predicted_goals_no)
+        df_summary_top["correct_prediction"] = \
+            df_summary_top.apply\
+                (lambda x: 1 if str(x["label"]) in str(x["predicted_goals"]).replace("_", "") else 0,
+                 axis = 1)
+        df_summary_top["observed_action_no"] = self.observation.obs_file.index+1
+        df_summary_top = df_summary_top[["observed_action_no"] +
+                                        [c for c in df_summary_top.columns if c != "observed_action_no"]]
+        total_goals_no = df_summary_agg.groupby("observed_action_no", as_index = False)["goal"].count()
+        total_goals_no.rename(columns = {"goal": "total_goals_no"}, inplace = True)
+        df_summary_top = df_summary_top.merge(total_goals_no, on="observed_action_no", how="left")
+        goals_achieved = df_summary_agg[df_summary_agg["goal_achieved"] == 1]\
+                                              .groupby("observed_action_no").\
+                                              agg({"goal": lambda x: x.unique(),
+                                                   "observed_action": "count",
+                                                   "goal_prob_nrmlsd": "max",
+                                                   "seconds": "max"})
+        goals_achieved.rename(columns = {"goal": "goals_achieved", "observed_action": "goals_achieved_no",
+                                         "goal_prob_nrmlsd": "prob"},inplace = True)
+        goals_achieved["goals_achieved"] = goals_achieved["goals_achieved"].astype(str).str.replace("'", "")
+        df_summary_top = df_summary_top.merge(goals_achieved, on = "observed_action_no", how = "left")
+        df_summary_top["time_left"] = np.where(df_summary_top["total_goals_no"] == df_summary_top["goals_achieved_no"],
+                                               df_summary_top["diff_t"] - df_summary_top["seconds"], 0)
+        df_summary_top["time_left"] = np.where(df_summary_top["time_left"] < 0, 0, df_summary_top["time_left"])
+        df_summary_top = df_summary_top[['observed_action_no', 't', 'action', 'goals_remaining','total_goals_no',
+                                         'goals_achieved', 'goals_achieved_no','label', 'predicted_goals',
+                                         'predicted_goals_no', 'correct_prediction', 'prob', 'diff_t','seconds',
+                                         'time_left']]
+        return df_summary_top, df_summary_agg, df_summary_steps
     def plot_prob_goals(self, adapt_y_axis, figsize_x=8, figsize_y=5):
         """
         RUN perform_solve_observed BEFORE.

@@ -440,6 +440,7 @@ class gm_model(gr_model.gr_model):
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step,0,-1):
             self._remove_step(i)
+        self.summary_level_1,self.summary_level_2, self.summary_level_3 = self._create_summary()
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=True):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
