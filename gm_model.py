@@ -23,6 +23,7 @@ class gm_model(gr_model.gr_model):
         """
         super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
+        self.cost_obs_cum_dict = {}
     def _recursive_effect_check(self, parse_string, zipped_parameters, start_fluents,
                                 inside_when=False, key_word=None, is_consequence = False):
         effects = []
@@ -237,6 +238,7 @@ class gm_model(gr_model.gr_model):
                                                                               float(effect_change_number)))
                 if identified_func == goal.metric_min_func:
                     self.cost_obs_cum = float(re.findall(r'\d+\.*\d*', new_start_fluents[idx_func_start_fluents])[0])
+                    self.cost_obs_cum_dict[step] = self.cost_obs_cum
             else:
                 effect = gr_model._clean_literal(effect)
                 if "(not(" in effect:
@@ -308,7 +310,7 @@ class gm_model(gr_model.gr_model):
         optimal_costs = np.array(optimal_costs)
         suffix_costs = [self.steps_observed[step - 1].plan_cost[key] for key in keys]
         suffix_costs = np.array(suffix_costs)
-        p_observed = optimal_costs / (self.cost_obs_cum + suffix_costs)
+        p_observed = optimal_costs / (self.cost_obs_cum_dict[step] + suffix_costs)
         p_observed = np.round(p_observed, 4)
         prob_dict = {}
         sum_probs = 0
@@ -393,14 +395,6 @@ class gm_model(gr_model.gr_model):
                     failure = True
             if not failure:
                 self.steps_observed.append(self.task_thread_solve)
-                result_probs = self._calc_prob(i + 1)
-                for g in self.goal_list[i+1]:
-                    if g.name not in result_probs[0].keys():
-                        result_probs[0][g.name] = 0.00
-                        result_probs[1][g.name] = 0.00
-                self.prob_dict_list.append(result_probs[0])
-                self.prob_nrmlsd_dict_list.append(result_probs[1])
-                self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 print("failure, read in files ")
@@ -428,16 +422,17 @@ class gm_model(gr_model.gr_model):
                         failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
                         os.remove(file_path)
                 self.steps_observed.append(failure_task)
-                result_probs = self._calc_prob(i + 1)
-                for g in self.goal_list[i + 1]:
-                    if g.name not in result_probs[0].keys():
-                        result_probs[0][g.name] = 0.00
-                        result_probs[1][g.name] = 0.00
-                self.prob_dict_list.append(result_probs[0])
-                self.prob_nrmlsd_dict_list.append(result_probs[1])
-                self.predicted_step[i + 1] = self._predict_step(step=i)
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
+        for i in range(step):
+            result_probs = self._calc_prob(i + 1)
+            for g in self.goal_list[i + 1]:
+                if g.name not in result_probs[0].keys():
+                    result_probs[0][g.name] = 0.00
+                    result_probs[1][g.name] = 0.00
+            self.prob_dict_list.append(result_probs[0])
+            self.prob_nrmlsd_dict_list.append(result_probs[1])
+            self.predicted_step[i + 1] = self._predict_step(step=i)
         for i in range(step,0,-1):
             self._remove_step(i)
         self.summary_level_1,self.summary_level_2, self.summary_level_3 = self._create_summary()

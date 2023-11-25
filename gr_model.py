@@ -222,10 +222,10 @@ class gr_model:
         most_likeli = 0
         key_most_likeli = []
         for key in list(dict_proba.keys()):
-            if dict_proba[key] > most_likeli:
+            if dict_proba[key] > most_likeli and dict_proba[key] > 0:
                 key_most_likeli = [key]
                 most_likeli = dict_proba[key]
-            elif dict_proba[key] == most_likeli:
+            elif dict_proba[key] == most_likeli and dict_proba[key] > 0:
                 key_most_likeli.append(key)
                 most_likeli = dict_proba[key]
         return key_most_likeli

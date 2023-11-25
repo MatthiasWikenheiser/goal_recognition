@@ -392,14 +392,6 @@ class prap_model(gr_model.gr_model):
                 time.sleep(5)
             if not failure:
                 self.steps_observed.append(self.task_thread_solve)
-                result_probs = self._calc_prob(i + 1)
-                for g in self.goal_list[i+1]:
-                    if g.name not in result_probs[0].keys():
-                        result_probs[0][g.name] = 0.00
-                        result_probs[1][g.name] = 0.00
-                self.prob_dict_list.append(result_probs[0])
-                self.prob_nrmlsd_dict_list.append(result_probs[1])
-                self.predicted_step[i+1] = self._predict_step(step= i)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 print("failure, read in files ")
@@ -482,14 +474,6 @@ class prap_model(gr_model.gr_model):
                             failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
                             os.remove(file_path)
                     self.steps_observed.append(failure_task)
-                    result_probs = self._calc_prob(i + 1)
-                    for g in self.goal_list[i + 1]:
-                        if g.name not in result_probs[0].keys():
-                            result_probs[0][g.name] = 0.00
-                            result_probs[1][g.name] = 0.00
-                    self.prob_dict_list.append(result_probs[0])
-                    self.prob_nrmlsd_dict_list.append(result_probs[1])
-                    self.predicted_step[i + 1] = self._predict_step(step=i)
             i += 1
             _i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
@@ -499,6 +483,15 @@ class prap_model(gr_model.gr_model):
                     os.remove(g.problem_path)
             for obs_con in list_problem_obs_con:
                 os.remove(obs_con.problem_path)
+        for i in range(step):
+            result_probs = self._calc_prob(i + 1)
+            for g in self.goal_list[i + 1]:
+                if g.name not in result_probs[0].keys():
+                    result_probs[0][g.name] = 0.00
+                    result_probs[1][g.name] = 0.00
+            self.prob_dict_list.append(result_probs[0])
+            self.prob_nrmlsd_dict_list.append(result_probs[1])
+            self.predicted_step[i + 1] = self._predict_step(step=i)
         for j in range(i,0,-1):
             self._remove_step(j)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
