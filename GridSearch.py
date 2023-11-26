@@ -150,6 +150,16 @@ class GridSearch:
         model_types = model_types if type(model_types) == list else [model_types]
         action_list = list(self._domain_root.action_dict.keys())
         action_list.sort()
+        query_model_grid = (f"""SELECT hash_code_action, action_conf, config, optimal_feasible, seconds
+                                                   FROM model_grid WHERE hash_code_model = '{self.hash_code}'""")
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        model_grid = pd.read_sql_query(query_model_grid, db_gr)
+        hash_code_action_list = list(model_grid["hash_code_action"])
+        db_gr.close()
+
+
+
+
         for model_type in model_types:
             dict_obs = {}
             for i in range(len(self.model_list_optimal)):
@@ -157,15 +167,19 @@ class GridSearch:
                 _, hash_code_action = self._hash_action(self.grid, i, action_list)
                 for j in range(len(self.obs_action_sequence_list)):
                     if model_type == "gm_model":
-                        model = gm_model(domain_root=self._domain_root,
+                        model = gm_model(domain_root=pddl_domain(self.model_list_optimal[i].\
+                                                                 changed_domain_root.domain_path),
                                          goal_list=self._goal_list,
                                          obs_action_sequence=self.obs_action_sequence_list[j],
                                          planner=planner)
                     if model_type == "prap_model":
-                        model = prap_model(domain_root=self._domain_root,
+                        model = prap_model(domain_root=pddl_domain(self.model_list_optimal[i].\
+                                                                 changed_domain_root.domain_path),
                                            goal_list=self._goal_list,
                                            obs_action_sequence=self.obs_action_sequence_list[j],
                                            planner=planner)
+
+                    self._reconstruct_from_db(model = model, hash_code_action=hash_code_action_list[i])
                     model_list_obs.append(model)
                 dict_obs[i] = model_list_obs
                 dict_obs[hash_code_action] = model_list_obs
@@ -185,8 +199,6 @@ class GridSearch:
                 i -= 1
             [os.remove(self.goal_list_path[i].problem_path) for i in range(len(self.goal_list_path))]
             os.remove(self.path + f"{self.planner}")
-
-
     def _reconstruct_from_db(self, model, hash_code_action):
         model.steps_optimal.problem = model.goal_list[0]
         model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
@@ -213,7 +225,7 @@ class GridSearch:
                 step_dict[opt_steps_goal.loc[j,"step"]] = opt_steps_goal.loc[j,"action"]
             model.steps_optimal.plan[goal] = step_dict
             model.steps_optimal.plan_achieved[goal] = 1
-            model.steps_optimal.plan_cost[goal] = opt_costs.loc[opt_costs["goal"] == goal, "costs"].iloc[0]
+            model.steps_optimal.plan_cost[goal] = opt_costs.loc[opt_costs["goal"] == goal, "goal_costs"].iloc[0]
             model.steps_optimal.time[goal] = opt_costs.loc[opt_costs["goal"] == goal, "seconds"].iloc[0]
         model.mp_seconds = max([model.steps_optimal.time[g] for g in model.steps_optimal.time.keys()])
     def update_db_grid_item(self, row = None, update = False):
@@ -229,6 +241,7 @@ class GridSearch:
         seconds = []
         step = []
         action = []
+        action_cost = []
         rl_type = []
         iterations = []
         time_stamp = []
@@ -249,21 +262,24 @@ class GridSearch:
                     seconds.append(self.model_list_optimal[i].steps_optimal.time[g.name])
                     time_stamp.append(tmstmp)
                     step.append(s)
-                    action.append(self.model_list_optimal[i].steps_optimal.plan[g.name][s])
+                    act = self.model_list_optimal[i].steps_optimal.plan[g.name][s]
+                    action.append(act)
+                    action_cost.append(self.model_list_optimal[i].domain_root.action_dict[act.split(" ")[0]].action_cost)
         result_df = pd.DataFrame({"hash_code_model": hash_code_model,
                                   "hash_code_action": hash_code_action,
                                   "rl_type": rl_type,
                                   "iterations": iterations,
                                   "goal": goal,
-                                  "costs": costs,
+                                  "goal_costs": costs,
                                   "seconds": seconds,
                                   "time_stamp": time_stamp,
                                   "step": step,
-                                  "action": action})
+                                  "action": action,
+                                  "action_cost": action_cost})
         self.model_grid_optimal_steps = result_df[["hash_code_model","hash_code_action","rl_type","iterations","goal",
-                                                   "step", "action", "time_stamp"]]
+                                                   "step", "action", "action_cost", "time_stamp"]]
         self.model_grid_optimal_costs = result_df[["hash_code_model","hash_code_action","rl_type","iterations","goal",
-                                                   "costs", "seconds", "time_stamp"]]
+                                                   "goal_costs", "seconds", "time_stamp"]]
         self.model_grid_optimal_costs.drop_duplicates(subset=["hash_code_model","hash_code_action","rl_type",
                                                                 "iterations","goal"], inplace = True)
         self.model_grid_optimal_costs = self.model_grid_optimal_costs.reset_index().iloc[:,1:]
