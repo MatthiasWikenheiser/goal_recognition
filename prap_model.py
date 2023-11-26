@@ -492,7 +492,8 @@ class prap_model(gr_model.gr_model):
             self.prob_dict_list.append(result_probs[0])
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i + 1] = self._predict_step(step=i)
-        for j in range(i,0,-1):
+        self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary()
+        for j in range(i+1,0,-1):
             self._remove_step(j)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:

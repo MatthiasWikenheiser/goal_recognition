@@ -1,4 +1,7 @@
 import os
+
+import gm_model
+import prap_model
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
 import hashlib
@@ -230,12 +233,14 @@ class gr_model:
                 most_likeli = dict_proba[key]
         return key_most_likeli
     def _create_summary(self):
+        print(type(self))
         df_summary_agg = pd.DataFrame()
         i = 0
         for step in self.steps_observed:
             goals_name = []
             goals_achieved = []
             goals_costs = []
+            goals_costs_cumulated = []
             goals_seconds = []
             goals_probs = []
             goals_probs_nrmlsd = []
@@ -248,15 +253,22 @@ class gr_model:
                 if goal.name in step.plan_achieved.keys():
                     if step.plan_achieved[goal.name] == 1:
                         goals_achieved.append(1)
-                        goals_costs.append(step.plan_cost[goal.name])
+                        if type(self) == gm_model.gm_model:
+                            goals_costs.append(step.plan_cost[goal.name] + self.cost_obs_cum_dict[i+1])
+                            goals_costs_cumulated.append(self.cost_obs_cum_dict[i+1])
+                        if type(self) == prap_model.prap_model:
+                            goals_costs.append(step.plan_cost[goal.name])
+                            goals_costs_cumulated.append(np.nan)
                         goals_seconds.append(step.time[goal.name])
                     else:
                         goals_achieved.append(0)
                         goals_costs.append(np.nan)
+                        goals_costs_cumulated.append(np.nan)
                         goals_seconds.append(np.nan)
                 else:
                     goals_achieved.append(0)
                     goals_costs.append(np.nan)
+                    goals_costs_cumulated.append(np.nan)
                     goals_seconds.append(np.nan)
             df_action = pd.DataFrame({"observed_action_no": [i+1 for _ in range(len(goals_name))],
                                       "observed_action": [self.observation.obs_file.loc[i,"action"] \
@@ -264,6 +276,7 @@ class gr_model:
                                       "goal": goals_name,
                                       "goal_achieved": goals_achieved,
                                       "goal_cost": goals_costs,
+                                      "goals_costs_cumulated": goals_costs_cumulated,
                                       "seconds": goals_seconds,
                                       "goal_prob": goals_probs,
                                       "goal_prob_nrmlsd": goals_probs_nrmlsd})
@@ -294,7 +307,6 @@ class gr_model:
         df_summary_steps = df_summary_steps[~(df_summary_steps["action"].isna())]
         df_summary_steps = df_summary_steps.reset_index().iloc[:, 1:]
         df_summary_top = self.observation.obs_file.copy()
-
         predicted_goals = []
         predicted_goals_no = []
         for i in self.predicted_step.keys():
@@ -325,10 +337,11 @@ class gr_model:
         df_summary_top["time_left"] = np.where(df_summary_top["total_goals_no"] == df_summary_top["goals_achieved_no"],
                                                df_summary_top["diff_t"] - df_summary_top["seconds"], 0)
         df_summary_top["time_left"] = np.where(df_summary_top["time_left"] < 0, 0, df_summary_top["time_left"])
-        df_summary_top = df_summary_top[['observed_action_no', 't', 'action', 'goals_remaining','total_goals_no',
+        df_summary_top = df_summary_top[['observed_action_no', 'action', 't', 'goals_remaining','total_goals_no',
                                          'goals_achieved', 'goals_achieved_no','label', 'predicted_goals',
                                          'predicted_goals_no', 'correct_prediction', 'prob', 'diff_t','seconds',
                                          'time_left']]
+        df_summary_top.rename(columns = {"action": "observed_action"}, inplace = True)
         return df_summary_top, df_summary_agg, df_summary_steps
     def plot_prob_goals(self, adapt_y_axis, figsize_x=8, figsize_y=5):
         """
