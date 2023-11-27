@@ -22,6 +22,7 @@ class prap_model(gr_model.gr_model):
         """
         super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.domain_list = [self.domain_root]
+        self.model_type = "prap_model"
     def _create_obs_domain(self, step = 1):
         domain = self.domain_list[step-1]
         new_domain = f"(define (domain {domain.name})\n"
@@ -55,12 +56,21 @@ class prap_model(gr_model.gr_model):
         idx_parameter_strt = cur_action.action.find(":parameters")
         idx_parameter_end = idx_parameter_strt + cur_action.action[idx_parameter_strt:].find(")")
         new_action =  new_action + "\n" +  cur_action.action[idx_parameter_strt:idx_parameter_end + 1] +"\n"
+        cur_pre = f"obs_precondition_{step}"
+        other_preconditions = cur_action.action_preconditions
+
+
+
+
+
+
         if step == 1:
-            new_action = new_action  + ":precondition(" +  cur_action.action_preconditions + ")"
+            #new_action = new_action  + ":precondition(" +  other_preconditions + ")"
+            new_action = new_action + f":precondition(and(not({cur_pre}))(" + other_preconditions+ "))"
         else:
             before_pre = f"obs_precondition_{step-1}"
-            new_action = new_action  + f":precondition(and({before_pre})(" + cur_action.action_preconditions + "))"
-        cur_pre = f"obs_precondition_{step}"
+            #new_action = new_action  + f":precondition(and({before_pre})(" + other_preconditions + "))"
+            new_action = new_action + f":precondition(and({before_pre})(not({cur_pre}))(" + other_preconditions + "))"
         #check if parameters exist
         new_action = new_action + " :effect"
         idx_and = cur_action.action_effects.find("and")+3

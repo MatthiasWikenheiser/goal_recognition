@@ -24,6 +24,7 @@ class gm_model(gr_model.gr_model):
         super().__init__(domain_root, goal_list, obs_action_sequence, planner)
         self.at_goal = None
         self.cost_obs_cum_dict = {}
+        self.model_type = "gm_model"
     def _recursive_effect_check(self, parse_string, zipped_parameters, start_fluents,
                                 inside_when=False, key_word=None, is_consequence = False):
         effects = []

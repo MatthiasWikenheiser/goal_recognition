@@ -1,7 +1,4 @@
 import os
-
-import gm_model
-import prap_model
 from pddl import pddl_domain, pddl_problem, pddl_observations
 from metric_ff_solver import metric_ff_solver
 import hashlib
@@ -12,8 +9,7 @@ import numpy as np
 import pandas as pd
 import re
 import copy
-#import prap_model
-#import gm_model
+
 
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
@@ -233,7 +229,6 @@ class gr_model:
                 most_likeli = dict_proba[key]
         return key_most_likeli
     def _create_summary(self):
-        print(type(self))
         df_summary_agg = pd.DataFrame()
         i = 0
         for step in self.steps_observed:
@@ -253,10 +248,10 @@ class gr_model:
                 if goal.name in step.plan_achieved.keys():
                     if step.plan_achieved[goal.name] == 1:
                         goals_achieved.append(1)
-                        if type(self) == gm_model.gm_model:
+                        if self.model_type == "gm_model":
                             goals_costs.append(step.plan_cost[goal.name] + self.cost_obs_cum_dict[i+1])
                             goals_costs_cumulated.append(self.cost_obs_cum_dict[i+1])
-                        if type(self) == prap_model.prap_model:
+                        if self.model_type == "prap_model":
                             goals_costs.append(step.plan_cost[goal.name])
                             goals_costs_cumulated.append(np.nan)
                         goals_seconds.append(step.time[goal.name])

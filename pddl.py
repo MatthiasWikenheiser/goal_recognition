@@ -23,6 +23,7 @@ class pddl_domain:
             self.name = self._get_name_action()
             self.action_parameters = self._get_action_parameters()
             self.action_preconditions = self._get_action_preconditions()
+            self.action_preconditions_split_and = self._list_action_preconditions_and_sep()
             self.action_effects = self._get_action_effects()
             self.action_cost = self._get_action_cost()
         def _get_name_action(self):
@@ -115,6 +116,38 @@ class pddl_domain:
                 return string_preconditions.replace(" ", "")
             else:
                 return(string_preconditions)
+        def _list_action_preconditions_and_sep(self):
+            p_string = self.action_preconditions
+            if len([x for x in re.findall("\w*\(*\w*\(*\)*" ,p_string) if x != ""]) == 0:
+                return []
+            else:
+                while p_string[0] in [" ", "\t", "\n"]:
+                    p_string = p_string[1:]
+                while p_string[-1] in [" ", "\t", "\n"]:
+                    p_string = p_string[:-1]
+                if not p_string.replace(" ", "").replace("\n", "").replace("\t", "").startswith("and("):
+                    return ["(" + p_string + ")"]
+                else:
+                    p_string = p_string[3:]
+                    while p_string[0] in [" ", "\t", "\n"]:
+                        p_string = p_string[1:]
+                    bracket_count = 0
+                    i = 0
+                    and_element = []
+                    while i < len(p_string):
+                        if p_string[i] == "(":
+                            bracket_count += 1
+                        elif p_string[i] == ")":
+                            bracket_count -= 1
+                        if bracket_count == 0:
+                            and_element.append(p_string[0:i + 1])
+                            p_string = p_string[i + 1:]
+                            i = -1
+                            if len(p_string) > 0:
+                                while p_string[0] in [" ", "\t", "\n"]:
+                                    p_string = p_string[1:]
+                        i += 1
+                return and_element
         def _get_action_effects(self):
             action = self.action
             idx_strt = action.find(":effect")
