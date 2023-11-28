@@ -9,6 +9,7 @@ import numpy as np
 import threading
 import gm_model
 import pandas as pd
+import re
 class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
@@ -40,11 +41,37 @@ class prap_model(gr_model.gr_model):
             new_domain = new_domain + function + "\n"
         new_domain = new_domain + ")\n"
         for action in domain.action_dict.keys():
-            new_domain = new_domain + domain.action_dict[action].action +"\n"
+            if "_OBS_PRECONDITION_" in action:
+               new_domain = new_domain + domain.action_dict[action].action +"\n"
+            else:
+                if step == 1:
+                    new_preconditions = \
+                        ["(obs_precondition_1)"] + domain.action_dict[action].action_preconditions_split_and
+                    new_preconditions_str = ":precondition "
+                    if len(new_preconditions) == 1:
+                        new_preconditions_str += new_preconditions[0][:-1]
+                    else:
+                        new_preconditions_str += "(and "
+                        for p in new_preconditions:
+                            new_preconditions_str += p
+                        new_preconditions_str += ")"
+                    changed_action_str = domain.action_dict[action].action
+                    changed_action_str = changed_action_str[:changed_action_str.find(":precondition")]\
+                                         + new_preconditions_str\
+                                         + changed_action_str[changed_action_str.find(":effect"):]
+                    new_domain = new_domain + changed_action_str + "\n"
+                else:
+                    changed_action_str = domain.action_dict[action].action
+                    changed_action_str = changed_action_str.replace(f"(obs_precondition_{step-1})",
+                                                                    f"(obs_precondition_{step})")
+                    new_domain = new_domain + changed_action_str + "\n"
         new_domain = new_domain + self._create_obs_action(step) + "\n)"
         return new_domain
     def _create_obs_action(self, step):
         domain = self.domain_list[step-1]
+        parameters = self.observation.obs_file.loc[step-1,"action"].split(" ")[1:]
+        if len(parameters) > 0:
+            parameters = [p.lower() for p in parameters]
         if step == 1:
             ob = [self.observation.obs_action_sequence[0]]
             action_key_curr = ob[0].split()[0]
@@ -56,21 +83,50 @@ class prap_model(gr_model.gr_model):
         idx_parameter_strt = cur_action.action.find(":parameters")
         idx_parameter_end = idx_parameter_strt + cur_action.action[idx_parameter_strt:].find(")")
         new_action =  new_action + "\n" +  cur_action.action[idx_parameter_strt:idx_parameter_end + 1] +"\n"
+        parameter_condition = []
+        for param in range(len(cur_action.action_parameters)):
+            parameter_condition.append(f"(= {cur_action.action_parameters[param].parameter} {parameters[param]})")
+        if len(cur_action.action_preconditions_split_and) == 0:
+            action_preconditions_split_and = parameter_condition
+        elif len(cur_action.action_preconditions_split_and) == 1:
+            if "obs_precondition" in cur_action.action_preconditions_split_and[0]:
+                action_preconditions_split_and = cur_action.action_preconditions_split_and + parameter_condition
+            else:
+                action_preconditions_split_and = parameter_condition + cur_action.action_preconditions_split_and
+        else:
+            action_preconditions_split_and = [cur_action.action_preconditions_split_and[0]] + parameter_condition \
+                                             + [c for c in cur_action.action_preconditions_split_and[1:]]
         cur_pre = f"obs_precondition_{step}"
-        other_preconditions = cur_action.action_preconditions
-
-
-
-
-
-
+        if len(action_preconditions_split_and) == 1 and step > 1: #at this point must be cur_pre
+            other_preconditions = ""
+        else:
+            if step == 1:
+                pre_conditions = action_preconditions_split_and
+            else:
+                pre_conditions = action_preconditions_split_and[1:]
+            if len(pre_conditions) == 0:
+                other_preconditions = ""
+            if len(pre_conditions) == 1:
+                other_preconditions = pre_conditions[0]
+            else:
+                #other_preconditions = "(and"
+                other_preconditions = ""
+                for pre_condition in pre_conditions:
+                    other_preconditions += pre_condition
+                #other_preconditions += ")"
         if step == 1:
             #new_action = new_action  + ":precondition(" +  other_preconditions + ")"
-            new_action = new_action + f":precondition(and(not({cur_pre}))(" + other_preconditions+ "))"
+            if other_preconditions == "":
+                new_action = new_action + f":precondition(not({cur_pre}))"
+            else:
+                new_action = new_action + f":precondition(and(not({cur_pre}))" + other_preconditions+ ")"
         else:
             before_pre = f"obs_precondition_{step-1}"
+            if other_preconditions == "":
+                new_action = new_action + f":precondition(and({before_pre})(not({cur_pre})))"
             #new_action = new_action  + f":precondition(and({before_pre})(" + other_preconditions + "))"
-            new_action = new_action + f":precondition(and({before_pre})(not({cur_pre}))(" + other_preconditions + "))"
+            else:
+                new_action = new_action + f":precondition(and({before_pre})(not({cur_pre}))" + other_preconditions + ")"
         #check if parameters exist
         new_action = new_action + " :effect"
         idx_and = cur_action.action_effects.find("and")+3
@@ -371,7 +427,7 @@ class prap_model(gr_model.gr_model):
                     with open(path_error_action_possible, "w") as new_goal_support:
                         new_goal_support.write(error_action_possible)
             try:
-                time_step = 5
+                #time_step = 5
                 t = threading.Thread(target=self._thread_solve,
                                      args=[i, multiprocess, time_step])
                 t.start()
