@@ -423,6 +423,8 @@ class prap_model(gr_model.gr_model):
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", _i, ",time elapsed:", round(step_time - start_time,2), "s")
+            print("i: ", i)
+            print(len(self.steps_observed))
             if gm_support:
                 #print(self._create_obs_action(i+1))
                 new_goal_support_list = []
@@ -563,33 +565,33 @@ class prap_model(gr_model.gr_model):
                             os.remove(bug_path + gm_support_goal)
                         os.remove(bug_path + "bug_observation_left.csv")
                         os.rmdir(bug_path)
-                    if not mff_bug:
-                        failure_task = metric_ff_solver()
-                        failure_task.problem = self.goal_list[i + 1]
-                        failure_task.domain = self.domain_list[i + 1]
-                        failure_task.domain_path = failure_task.domain.domain_path
-                        print("failure_task.domain_path, ", failure_task.domain_path)
-                        path = ""
-                        for path_pc in failure_task.domain_path.split("/")[:-1]:
-                            path = path + path_pc + "/"
-                        print(path)
-                        for goal in failure_task.problem:
-                            key = goal.name
-                            print(key)
-                            file_path = path + f"output_goal_{key}.txt"
-                            print(file_path)
-                            if os.path.exists(file_path):
-                                print(file_path, " exists")
-                                f = open(file_path, "r")
-                                failure_task.summary[key] = f.read()
-                                failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                                failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                                failure_task.plan_achieved[key] = 1
-                                failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                                os.remove(file_path)
-                        self.steps_observed.append(failure_task)
+                if not mff_bug:
+                    failure_task = metric_ff_solver()
+                    failure_task.problem = self.goal_list[i + 1]
+                    failure_task.domain = self.domain_list[i + 1]
+                    failure_task.domain_path = failure_task.domain.domain_path
+                    print("failure_task.domain_path, ", failure_task.domain_path)
+                    path = ""
+                    for path_pc in failure_task.domain_path.split("/")[:-1]:
+                        path = path + path_pc + "/"
+                    print(path)
+                    for goal in failure_task.problem:
+                        key = goal.name
+                        print(key)
+                        file_path = path + f"output_goal_{key}.txt"
+                        print(file_path)
+                        if os.path.exists(file_path):
+                            print(file_path, " exists")
+                            f = open(file_path, "r")
+                            failure_task.summary[key] = f.read()
+                            failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                            failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                            failure_task.plan_achieved[key] = 1
+                            failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                            os.remove(file_path)
+                    self.steps_observed.append(failure_task)
             time.sleep(3)
-            self._check_validity_plan(step=_i, mode="remove")
+            self._check_validity_plan(step=len(self.steps_observed), mode="remove")
             i += 1
             _i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
