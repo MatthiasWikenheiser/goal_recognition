@@ -346,7 +346,48 @@ class prap_model(gr_model.gr_model):
         for o in list_problem_obs_con:
             os.remove(o.problem_path)
         os.rmdir(self.test_path)
-    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True, gm_support = False, _i = 1):
+    def _check_validity_plan(self, step = 1, mode = "check"):
+        #print(self.steps_observed[step -1].plan["goal_4"])
+        g = 0
+        valid = True
+        remove_list = []
+        while g < len(self.steps_observed[step -1].plan.keys()):
+            valid = True
+            goal_key = list(self.steps_observed[step -1].plan.keys())[g]
+            if len(self.steps_observed[step -1].plan[goal_key].keys()) < step:
+                valid = False
+                if mode == "check":
+                    print(f"----------------step {step}, goal {goal_key}: valid is false (length)--------")
+                    m = max(list(self.steps_observed[step - 1].plan[goal_key].keys()))
+                    print("step:",m)
+                    print(self.steps_observed[step -1].plan[goal_key][m])
+                    print("\n")
+                if (step - 1, goal_key) not in remove_list:
+                    remove_list.append((step - 1, goal_key))
+            if valid:
+                idx_key = 0
+                while idx_key < step and valid:
+                    #print(idx_key, self.steps_observed[step - 1].plan[goal_key][idx_key])
+                    if not f"_OBS_PRECONDITION_{idx_key + 1}" in self.steps_observed[step - 1].plan[goal_key][idx_key]:
+                        valid = False
+                        if mode == "check":
+                            print(f"----------------step {step}, goal {goal_key}: valid is false (steps)--------")
+                            print("step:", idx_key+1)
+                            print(self.steps_observed[step - 1].plan[goal_key][idx_key])
+                            print("\n")
+                        if (step - 1, goal_key) not in remove_list:
+                            remove_list.append((step - 1, goal_key))
+                    idx_key += 1
+            g += 1
+        if mode == "remove":
+            if len(remove_list) > 0:
+                for tuple in remove_list:
+                    self.steps_observed[tuple[0]].plan.pop(tuple[1])
+                    self.steps_observed[tuple[0]].plan_cost.pop(tuple[1])
+                    self.steps_observed[tuple[0]].plan_achieved.pop(tuple[1])
+                    self.steps_observed[tuple[0]].time.pop(tuple[1])
+    def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True,
+                               gm_support = False, _i = 1, _extend_prap = None):
         """
         BEFORE running this, RUN perform_solve_optimal!
         Solves the transformed pddL_domain and list of pddl_problems (goal_list) for specified steps
@@ -453,10 +494,11 @@ class prap_model(gr_model.gr_model):
                         time.sleep(1)
                         [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                     failure = True
-            if i> 0 and (i+1) % 50 == 0:
-                print("reached 50 steps, set failure and mff_bug to true")
-                failure = True
-                time.sleep(5)
+            if not _extend_prap is None:
+                if i> 0 and (i+1) % _extend_prap == 0:
+                    print(f"reached {_extend_prap} steps, set failure and mff_bug to true")
+                    failure = True
+                    time.sleep(5)
             if not failure:
                 self.steps_observed.append(self.task_thread_solve)
             else:
@@ -472,75 +514,82 @@ class prap_model(gr_model.gr_model):
                             os.remove(self.path_error_env + error_file)
                         else:
                             domain_bug = True
-                if i> 0 and (i+1) % 50 == 0:
-                    mff_bug = True
-                    domain_bug = True
+                #for the moment provocate error in order to come back here
                 if mff_bug:
-                    print("-------bug reached---- wait 40 s")
-                    time.sleep(40)
-                    [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                    print("instantiate new prap_model")
-                    time.sleep(5)
-                    bug_path_split = self.domain_list[i].domain_path.split("/")[:-1]
-                    temp_path = ""
-                    for slice in bug_path_split:
-                        temp_path += slice +"/"
-                    bug_path = temp_path + "bug_path/"
-                    print("bug_path :", bug_path)
-                    os.mkdir(bug_path)
-                    shutil.copy(f'{self.planner}', bug_path + f'/{self.planner}')
-                    shutil.copy(self.domain_root.domain_path, bug_path + "domain_root.pddl")
-                    gm_support_step_goals = [x for x in os.listdir(temp_path) if "gm_support_goal" in x
-                                             and f"obs_step_{i-1}.pddl" in x]
-                    bug_goal_list = []
-                    for gm_support_goal in gm_support_step_goals:
-                        shutil.copy(temp_path + gm_support_goal, bug_path + gm_support_goal)
-                        bug_goal_list.append(pddl_problem(bug_path + gm_support_goal))
-                    bug_observation_left = pd.read_csv(self.observation.observation_path)
-                    bug_observation_left = bug_observation_left.iloc[i:, :]
-                    bug_observation_left = bug_observation_left.reset_index().iloc[:,1:]
-                    bug_observation_left.to_csv(bug_path + "bug_observation_left.csv", index = False)
-                    self.bug_prap_model = prap_model(pddl_domain(bug_path + "domain_root.pddl"), bug_goal_list,
-                                                pddl_observations(bug_path + "bug_observation_left.csv"))
-                    #print("check optimal_feasible")
-                    #bug_prap_model.perform_solve_optimal(multiprocess=True, type_solver='3', weight='1',
-                                                         #timeout=self.chosen_optimal_timeout)
-                    self.bug_prap_model.steps_optimal = self.steps_optimal
-                    print("continue check")
-                    time.sleep(10)
-                    self.bug_prap_model.perform_solve_observed(step = -1, priors = priors, beta= beta,
-                                                          multiprocess= multiprocess, gm_support= gm_support, _i = _i)
-                    os.remove(bug_path + f'/{self.planner}')
-                    os.remove(bug_path + "domain_root.pddl")
-                    for gm_support_goal in gm_support_step_goals:
-                        os.remove(bug_path + gm_support_goal)
-                    os.remove(bug_path + "bug_observation_left.csv")
-                    os.rmdir(bug_path)
-                if not mff_bug:
-                    failure_task = metric_ff_solver()
-                    failure_task.problem = self.goal_list[i + 1]
-                    failure_task.domain = self.domain_list[i + 1]
-                    failure_task.domain_path = failure_task.domain.domain_path
-                    print("failure_task.domain_path, ", failure_task.domain_path)
-                    path = ""
-                    for path_pc in failure_task.domain_path.split("/")[:-1]:
-                        path = path + path_pc + "/"
-                    print(path)
-                    for goal in failure_task.problem:
-                        key = goal.name
-                        print(key)
-                        file_path = path + f"output_goal_{key}.txt"
-                        print(file_path)
-                        if os.path.exists(file_path):
-                            print(file_path, " exists")
-                            f = open(file_path, "r")
-                            failure_task.summary[key] = f.read()
-                            failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                            failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                            failure_task.plan_achieved[key] = 1
-                            failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                            os.remove(file_path)
-                    self.steps_observed.append(failure_task)
+                    i = np.inf
+                    print("has set i = np.inf due to mff_bug")
+                if not _extend_prap is None:
+                    if i> 0 and (i+1) % _extend_prap == 0:
+                        mff_bug = True
+                        domain_bug = True
+                    if mff_bug:
+                        print("-------bug reached---- wait 40 s")
+                        time.sleep(40)
+                        [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                        print("instantiate new prap_model")
+                        time.sleep(5)
+                        bug_path_split = self.domain_list[i].domain_path.split("/")[:-1]
+                        temp_path = ""
+                        for slice in bug_path_split:
+                            temp_path += slice +"/"
+                        bug_path = temp_path + "bug_path/"
+                        print("bug_path :", bug_path)
+                        os.mkdir(bug_path)
+                        shutil.copy(f'{self.planner}', bug_path + f'/{self.planner}')
+                        shutil.copy(self.domain_root.domain_path, bug_path + "domain_root.pddl")
+                        gm_support_step_goals = [x for x in os.listdir(temp_path) if "gm_support_goal" in x
+                                                 and f"obs_step_{i-1}.pddl" in x]
+                        bug_goal_list = []
+                        for gm_support_goal in gm_support_step_goals:
+                            shutil.copy(temp_path + gm_support_goal, bug_path + gm_support_goal)
+                            bug_goal_list.append(pddl_problem(bug_path + gm_support_goal))
+                        bug_observation_left = pd.read_csv(self.observation.observation_path)
+                        bug_observation_left = bug_observation_left.iloc[i:, :]
+                        bug_observation_left = bug_observation_left.reset_index().iloc[:,1:]
+                        bug_observation_left.to_csv(bug_path + "bug_observation_left.csv", index = False)
+                        self.bug_prap_model = prap_model(pddl_domain(bug_path + "domain_root.pddl"), bug_goal_list,
+                                                    pddl_observations(bug_path + "bug_observation_left.csv"))
+                        #print("check optimal_feasible")
+                        #bug_prap_model.perform_solve_optimal(multiprocess=True, type_solver='3', weight='1',
+                                                             #timeout=self.chosen_optimal_timeout)
+                        self.bug_prap_model.steps_optimal = self.steps_optimal
+                        print("continue check")
+                        time.sleep(10)
+                        self.bug_prap_model.perform_solve_observed(step = -1, priors = priors, beta= beta,
+                                                              multiprocess= multiprocess, gm_support= gm_support, _i = _i)
+                        os.remove(bug_path + f'/{self.planner}')
+                        os.remove(bug_path + "domain_root.pddl")
+                        for gm_support_goal in gm_support_step_goals:
+                            os.remove(bug_path + gm_support_goal)
+                        os.remove(bug_path + "bug_observation_left.csv")
+                        os.rmdir(bug_path)
+                    if not mff_bug:
+                        failure_task = metric_ff_solver()
+                        failure_task.problem = self.goal_list[i + 1]
+                        failure_task.domain = self.domain_list[i + 1]
+                        failure_task.domain_path = failure_task.domain.domain_path
+                        print("failure_task.domain_path, ", failure_task.domain_path)
+                        path = ""
+                        for path_pc in failure_task.domain_path.split("/")[:-1]:
+                            path = path + path_pc + "/"
+                        print(path)
+                        for goal in failure_task.problem:
+                            key = goal.name
+                            print(key)
+                            file_path = path + f"output_goal_{key}.txt"
+                            print(file_path)
+                            if os.path.exists(file_path):
+                                print(file_path, " exists")
+                                f = open(file_path, "r")
+                                failure_task.summary[key] = f.read()
+                                failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                                failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                                failure_task.plan_achieved[key] = 1
+                                failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                                os.remove(file_path)
+                        self.steps_observed.append(failure_task)
+            time.sleep(3)
+            self._check_validity_plan(step=_i, mode="remove")
             i += 1
             _i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
@@ -561,8 +610,8 @@ class prap_model(gr_model.gr_model):
             self.predicted_step[i + 1] = self._predict_step(step=i)
         self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary()
         time.sleep(5)
-        for j in range(i+1,0,-1):
-            self._remove_step(j)
+        #for j in range(i+1,0,-1):
+         #   self._remove_step(j)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
@@ -590,7 +639,6 @@ class prap_model(gr_model.gr_model):
             key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
             prob.append(p_observed[key] / (p_observed[key] + p_optimal[key]))
             prob_dict[key] = p_observed[key] / (p_observed[key] + p_optimal[key])
-            prob_dict[key] = np.round(prob_dict[key], 4)
         prob_normalised_dict = {}
         for i in range(len(prob)):
             key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
