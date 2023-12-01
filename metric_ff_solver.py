@@ -33,9 +33,9 @@ class metric_ff_solver:
                     f = open(file_path, "r")
                     try_read = False
                     time.sleep(0.5)
+                    summary = f.read()
                 except:
                     pass
-            summary = f.read()
         dict_plan = {}
         idx_str = summary.find("step")
         idx_end = summary.find("plan cost") -1
@@ -114,7 +114,7 @@ class metric_ff_solver:
             self.mp_output_goals = {}
             for i in range(len(self.problem)):
                 key = self.problem[i].name
-                self.mp_output_goals[key] = mp.Array("c", 10**4)
+                self.mp_output_goals[key] = mp.Array("c", 5*(10**5))
             self.mp_goal_computed = {}
             for i in range(len(self.problem)):
                 key = self.problem[i].name
@@ -162,8 +162,12 @@ class metric_ff_solver:
                         self.plan[key] = self._legal_plan(self.summary[key], file_path)
                         self.plan_cost[key] = self._cost(self.summary[key], file_path)
                         self.plan_achieved[key] = self.mp_goal_computed[key].value
+                        #self.plan_achieved[key] = 1
                         self.time[key] = self._time_2_solve(self.summary[key], file_path)
-                        os.remove(file_path)
+                        try:
+                            os.remove(file_path)
+                        except:
+                            pass
                     [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
             path = ""
             for path_pc in self.domain_path.split("/")[:-1]:
@@ -176,7 +180,8 @@ class metric_ff_solver:
                 files.append(file_path)
                 self.plan[key] = self._legal_plan(self.summary[key], file_path)
                 self.plan_cost[key] = self._cost(self.summary[key], file_path)
-                self.plan_achieved[key] = self.mp_goal_computed[key].value
+                #self.plan_achieved[key] = self.mp_goal_computed[key].value
+                self.plan_achieved[key] = 1 if key in self.plan.keys() else 0
                 self.time[key] = self._time_2_solve(self.summary[key], file_path)
             #in order to use pickle, destroy mp.arrays
             self.mp_output_goals = {} # set empty
@@ -200,26 +205,32 @@ class metric_ff_solver:
                 print(key)
         except subprocess.CalledProcessError as e:
             error = e.output.decode("ascii")
-            if "advancing to goal distance:" not in error and error != "":
-                print(f"-------------ERROR-------------")
-                #print(error)
-                now = dt.datetime.now()
-                year = str(now.year)
-                month = str(now.month) if now.month > 10 else '0' + str(now.month)
-                day = str(now.day) if now.day > 10 else '0' + str(now.day)
-                hour = str(now.hour) if now.hour > 10 else '0' + str(now.hour)
-                minute = str(now.minute) if now.minute > 10 else '0' + str(now.minute)
-                seconds = str(now.second) if now.second > 10 else '0' + str(now.second)
-                tmstmp = f"{year}{month}{day}-{hour}{minute}{seconds}"
-                d = domain.replace(".pddl", "")
-                p = problem.replace(".pddl", "")
-                if base_domain is None or observation_name is None:
-                    with open(path_error + f"error_{tmstmp}_{d}_{p}.txt", "w") as error_write:
-                        error_write.write(error)
-                else:
-                    with open(path_error + f"error_{tmstmp}_{base_domain}_{observation_name}_{p}.txt", "w") as error_write:
-                        error_write.write(error)
-                print("-------------ERROR-------------")
+            if ("advancing to goal distance:" not in error and error != ""):
+                translate_neg_cond_error = False
+                if error.splitlines()[-1].startswith("translating negated cond") \
+                        or error.splitlines()[-2].startswith("translating negated cond") \
+                        or error.splitlines()[-3].startswith("translating negated cond"):
+                    translate_neg_cond_error = True
+                if not translate_neg_cond_error:
+                    print(f"-------------ERROR-------------")
+                    #print(error)
+                    now = dt.datetime.now()
+                    year = str(now.year)
+                    month = str(now.month) if now.month > 10 else '0' + str(now.month)
+                    day = str(now.day) if now.day > 10 else '0' + str(now.day)
+                    hour = str(now.hour) if now.hour > 10 else '0' + str(now.hour)
+                    minute = str(now.minute) if now.minute > 10 else '0' + str(now.minute)
+                    seconds = str(now.second) if now.second > 10 else '0' + str(now.second)
+                    tmstmp = f"{year}{month}{day}-{hour}{minute}{seconds}"
+                    d = domain.replace(".pddl", "")
+                    p = problem.replace(".pddl", "")
+                    if base_domain is None or observation_name is None:
+                        with open(path_error + f"error_{tmstmp}_{d}_{p}.txt", "w") as error_write:
+                            error_write.write(error)
+                    else:
+                        with open(path_error + f"error_{tmstmp}_{base_domain}_{observation_name}_{p}.txt", "w") as error_write:
+                            error_write.write(error)
+                    print("-------------ERROR-------------")
     def _run_metric_ff_loop(self, domain, problem, i):
         command_string = f"./{self.planner} -o {domain} -f {problem} -s {self.type_solver} -w {self.weight}"
         output = subprocess.check_output(command_string, shell = True)

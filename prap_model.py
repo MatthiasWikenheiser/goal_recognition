@@ -401,6 +401,7 @@ class prap_model(gr_model.gr_model):
         UNDER CONSTRUCTION - set timeout to time in obs_action_sequence
 
         """
+        mff_bug = False
         if step == -1:
             step =  self.observation.obs_len
         start_time = time.time()
@@ -423,8 +424,6 @@ class prap_model(gr_model.gr_model):
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", _i, ",time elapsed:", round(step_time - start_time,2), "s")
-            print("i: ", i)
-            print(len(self.steps_observed))
             if gm_support:
                 #print(self._create_obs_action(i+1))
                 new_goal_support_list = []
@@ -484,6 +483,23 @@ class prap_model(gr_model.gr_model):
             while background_loop:
                 time.sleep(0.7)
                 # print("task.solved: ",self.task_thread_solve.solved )
+                if len(os.listdir(self.path_error_env)) != len(self.error_write_files) and gm_support:
+                    for error_file in [x for x in os.listdir(self.path_error_env) if
+                                       x not in self.error_write_files]:
+                        read_error = open(self.path_error_env + error_file, "r").read()
+                        if "unknown optimization method" in read_error:
+                            mff_bug = True
+                            domain_bug = True
+                            os.remove(self.path_error_env + error_file)
+                        else:
+                            domain_bug = True
+                elif len(os.listdir(self.path_error_env)) != len(self.error_write_files):
+                    for error_file in [x for x in os.listdir(self.path_error_env) if
+                                       x not in self.error_write_files]:
+                        read_error = open(self.path_error_env + error_file, "r").read()
+                        if "unknown optimization method" in read_error:
+                            mff_bug = True
+                            os.remove(self.path_error_env + error_file)
                 if not (self.task_thread_solve.solved == 0 and (
                         time.time() - check_failure_t <= time_step + 10) and len(
                         self.goal_list[i + 1]) > 0):
@@ -501,25 +517,11 @@ class prap_model(gr_model.gr_model):
                     print(f"reached {_extend_prap} steps, set failure and mff_bug to true")
                     failure = True
                     time.sleep(5)
-            if not failure:
+            if not failure and not mff_bug:
                 self.steps_observed.append(self.task_thread_solve)
             else:
                 [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
                 print("failure, read in files ")
-                mff_bug = False
-                if len(os.listdir(self.path_error_env )) != len(self.error_write_files) and gm_support:
-                    for error_file in [x for x in os.listdir(self.path_error_env) if x not in self.error_write_files]:
-                        read_error = open(self.path_error_env + error_file, "r").read()
-                        if "unknown optimization method" in read_error:
-                            mff_bug = True
-                            domain_bug = True
-                            os.remove(self.path_error_env + error_file)
-                        else:
-                            domain_bug = True
-                #for the moment provocate error in order to come back here
-                if mff_bug:
-                    i = np.inf
-                    print("has set i = np.inf due to mff_bug")
                 if not _extend_prap is None:
                     if i> 0 and (i+1) % _extend_prap == 0:
                         mff_bug = True
@@ -565,32 +567,18 @@ class prap_model(gr_model.gr_model):
                             os.remove(bug_path + gm_support_goal)
                         os.remove(bug_path + "bug_observation_left.csv")
                         os.rmdir(bug_path)
+                if mff_bug:
+                    print("------------MFF-BUG------------")
+                    self._append_failure_task(i)
+                    i+=1
+                    while i < step:
+                        self._add_step(i + 1)
+                        self._append_failure_task(i)
+                        i+=1
+                    i -= 1
                 if not mff_bug:
-                    failure_task = metric_ff_solver()
-                    failure_task.problem = self.goal_list[i + 1]
-                    failure_task.domain = self.domain_list[i + 1]
-                    failure_task.domain_path = failure_task.domain.domain_path
-                    print("failure_task.domain_path, ", failure_task.domain_path)
-                    path = ""
-                    for path_pc in failure_task.domain_path.split("/")[:-1]:
-                        path = path + path_pc + "/"
-                    print(path)
-                    for goal in failure_task.problem:
-                        key = goal.name
-                        print(key)
-                        file_path = path + f"output_goal_{key}.txt"
-                        print(file_path)
-                        if os.path.exists(file_path):
-                            print(file_path, " exists")
-                            f = open(file_path, "r")
-                            failure_task.summary[key] = f.read()
-                            failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                            failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                            failure_task.plan_achieved[key] = 1
-                            failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                            os.remove(file_path)
-                    self.steps_observed.append(failure_task)
-            time.sleep(3)
+                    self._append_failure_task(i)
+            time.sleep(1)
             self._check_validity_plan(step=len(self.steps_observed), mode="remove")
             i += 1
             _i += 1
@@ -611,9 +599,35 @@ class prap_model(gr_model.gr_model):
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i + 1] = self._predict_step(step=i)
         self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary()
-        time.sleep(5)
-        #for j in range(i+1,0,-1):
-         #   self._remove_step(j)
+        time.sleep(1)
+        for j in range(i+1,0,-1):
+            self._remove_step(j)
+    def _append_failure_task(self,i, mff_bug = False):
+        failure_task = metric_ff_solver()
+        failure_task.problem = self.goal_list[i + 1]
+        failure_task.domain = self.domain_list[i + 1]
+        failure_task.domain_path = failure_task.domain.domain_path
+        #print("failure_task.domain_path, ", failure_task.domain_path)
+        path = ""
+        for path_pc in failure_task.domain_path.split("/")[:-1]:
+            path = path + path_pc + "/"
+        #print(path)
+        if not mff_bug:
+            for goal in failure_task.problem:
+                key = goal.name
+                #print(key)
+                file_path = path + f"output_goal_{key}.txt"
+                #print(file_path)
+                if os.path.exists(file_path):
+                    print(file_path, " exists")
+                    f = open(file_path, "r")
+                    failure_task.summary[key] = f.read()
+                    failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                    failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                    failure_task.plan_achieved[key] = 1
+                    failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                    os.remove(file_path)
+        self.steps_observed.append(failure_task)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
         if step == 0:
             print("step must be > 0 ")
