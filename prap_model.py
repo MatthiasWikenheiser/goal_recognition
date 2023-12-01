@@ -10,6 +10,9 @@ import threading
 import gm_model
 import pandas as pd
 import re
+import logging
+
+
 class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
@@ -233,20 +236,28 @@ class prap_model(gr_model.gr_model):
                 base_domain = self.domain_root.domain_path.replace(".pddl","")
             else:
                 base_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl","")
-            if self.crystal_island:
-                self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
+            try:
+                if self.crystal_island:
+                    self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
+                                                 timeout=time_step,
+                                                 # base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                                 base_domain= base_domain,
+                                                 observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
+                                                                   self.observation.name)
+                else:
+                    self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
                                              timeout=time_step,
-                                             # base_domain= self.domain_root.domain_path.replace(".pddl",""),
-                                             base_domain= base_domain,
-                                             observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
-                                                               self.observation.name)
-            else:
-                self.task_thread_solve.solve(self.domain_list[i+1], self.goal_list[i + 1], multiprocess=multiprocess,
-                                         timeout=time_step,
-                                         #base_domain= self.domain_root.domain_path.replace(".pddl",""),
-                                         base_domain = base_domain,
-                                         observation_name = self.observation.name)
-                                         #, observation_name= self.observation.name)
+                                             #base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                             base_domain = base_domain,
+                                             observation_name = self.observation.name)
+                                             #, observation_name= self.observation.name)
+            except:
+                error_message = f"""------------------------------------------------------
+                                    model_type {self.model_type},
+                                    file {self.observation.observation_path}, 
+                                    domain: {self.domain_list[i+1].domain_path}, 
+                                    step: {i+1}"""
+                logging.exception(error_message)
 
     #def __reduce__(self):
      #   return (self.__class__, (self.found_errors,))
@@ -421,6 +432,7 @@ class prap_model(gr_model.gr_model):
         i = 0
         domain_bug = False
         while i < step and not domain_bug:
+            logging.info(f"step: {i+1}")
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", _i, ",time elapsed:", round(step_time - start_time,2), "s")

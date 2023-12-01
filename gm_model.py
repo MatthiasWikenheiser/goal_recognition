@@ -8,6 +8,7 @@ import shutil
 import time
 import numpy as np
 import psutil
+import logging
 import matplotlib.pyplot as plt
 import hashlib
 class gm_model(gr_model.gr_model):
@@ -333,20 +334,28 @@ class gm_model(gr_model.gr_model):
                 base_domain = self.domain_root.domain_path.replace(".pddl","")
             else:
                 base_domain = self.domain_root.domain_path.split("/")[-1].replace(".pddl","")
-            if self.crystal_island:
-                self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
+            try:
+                if self.crystal_island:
+                    self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
+                                                 timeout=time_step,
+                                                 # base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                                 base_domain= base_domain,
+                                                 observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
+                                                                   self.observation.name)
+                else:
+                    self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
                                              timeout=time_step,
-                                             # base_domain= self.domain_root.domain_path.replace(".pddl",""),
-                                             base_domain= base_domain,
-                                             observation_name= self.observation.observation_path.split("/")[-2]+ "-" +
-                                                               self.observation.name)
-            else:
-                self.task_thread_solve.solve(self.domain_temp, self.goal_list[i + 1], multiprocess=multiprocess,
-                                         timeout=time_step,
-                                         #base_domain= self.domain_root.domain_path.replace(".pddl",""),
-                                         base_domain = base_domain,
-                                         observation_name = self.observation.name)
-                                         #, observation_name= self.observation.name)
+                                             #base_domain= self.domain_root.domain_path.replace(".pddl",""),
+                                             base_domain = base_domain,
+                                             observation_name = self.observation.name)
+                                             #, observation_name= self.observation.name)
+            except:
+                error_message = f"""------------------------------------------------------
+                                    model_type {self.model_type},
+                                    file {self.observation.observation_path}, 
+                                    domain: {self.domain_temp.domain_path}, 
+                                    step: {i+1}"""
+                logging.exception(error_message)
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -364,6 +373,7 @@ class gm_model(gr_model.gr_model):
             step = self.observation.obs_len
         i = 0
         while i < step:
+            logging.info(f"step: {i + 1}")
             time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
             print("\nstep:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")

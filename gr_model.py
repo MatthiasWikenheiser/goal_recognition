@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import re
 import copy
-
+import logging
 
 def save_model(model, filename):
     path = model.domain_root.domain_path.replace(model.domain_root.domain_path.split("/")[-1], "")
@@ -146,6 +146,9 @@ class gr_model:
         :param obs_action_sequence: agents observations of type _pddl_observations.
         :param planner: name of executable planner, here default ff_2_1 (MetricFF Planner version 2.1)
         """
+        self.path_project = "/home/mwiubuntu/goal_recognition/"
+        logging.basicConfig(level=logging.DEBUG, filename=self.path_project + "log.log", filemode="a",
+                            format="%(asctime)s - %(levelname)s - %(message)s")
         self.domain_root = domain_root
         self.changed_domain_root = None
         self.crystal_island = domain_root.name == "crystal_island"

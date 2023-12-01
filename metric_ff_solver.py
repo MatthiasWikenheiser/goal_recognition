@@ -114,7 +114,7 @@ class metric_ff_solver:
             self.mp_output_goals = {}
             for i in range(len(self.problem)):
                 key = self.problem[i].name
-                self.mp_output_goals[key] = mp.Array("c", 5*(10**5))
+                self.mp_output_goals[key] = mp.Array("c", 10**6)
             self.mp_goal_computed = {}
             for i in range(len(self.problem)):
                 key = self.problem[i].name
