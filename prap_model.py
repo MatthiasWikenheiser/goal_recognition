@@ -12,7 +12,6 @@ import pandas as pd
 import re
 import logging
 
-
 class prap_model(gr_model.gr_model):
     """class that solves a goal recognition problem according to the vanilla plain approach Plan recognition as Planning
     (PRAP) by Ramirez and Geffner, 2010.
@@ -28,207 +27,268 @@ class prap_model(gr_model.gr_model):
         self.domain_list = [self.domain_root]
         self.model_type = "prap_model"
     def _create_obs_domain(self, step = 1):
-        domain = self.domain_list[step-1]
-        new_domain = f"(define (domain {domain.name})\n"
-        new_domain = new_domain + domain.requirements + "\n"
-        new_domain = new_domain + domain.types + "\n"
-        new_domain = new_domain + '(:constants '
-        for constant_type in domain.constants.keys():
-            for constant in domain.constants[constant_type]:
-                new_domain += constant + " "
-            new_domain += f"- {constant_type} "
-        new_domain += ")\n"
-        new_domain = new_domain + self._create_obs_predicates(step) + "\n"
-        new_domain = new_domain + "(:functions "
-        for function in domain.functions:
-            new_domain = new_domain + function + "\n"
-        new_domain = new_domain + ")\n"
-        for action in domain.action_dict.keys():
-            if "_OBS_PRECONDITION_" in action:
-               new_domain = new_domain + domain.action_dict[action].action +"\n"
+        try:
+            domain = self.domain_list[step-1]
+            new_domain = f"(define (domain {domain.name})\n"
+            new_domain = new_domain + domain.requirements + "\n"
+            new_domain = new_domain + domain.types + "\n"
+            new_domain = new_domain + '(:constants '
+            for constant_type in domain.constants.keys():
+                for constant in domain.constants[constant_type]:
+                    new_domain += constant + " "
+                new_domain += f"- {constant_type} "
+            new_domain += ")\n"
+            new_domain = new_domain + self._create_obs_predicates(step) + "\n"
+            new_domain = new_domain + "(:functions "
+            for function in domain.functions:
+                new_domain = new_domain + function + "\n"
+            new_domain = new_domain + ")\n"
+            for action in domain.action_dict.keys():
+                if "_OBS_PRECONDITION_" in action:
+                   new_domain = new_domain + domain.action_dict[action].action +"\n"
+                else:
+                    if step == 1:
+                        new_preconditions = \
+                            ["(obs_precondition_1)"] + domain.action_dict[action].action_preconditions_split_and
+                        new_preconditions_str = ":precondition "
+                        if len(new_preconditions) == 1:
+                            new_preconditions_str += new_preconditions[0][:-1]
+                        else:
+                            new_preconditions_str += "(and "
+                            for p in new_preconditions:
+                                new_preconditions_str += p
+                            new_preconditions_str += ")"
+                        changed_action_str = domain.action_dict[action].action
+                        changed_action_str = changed_action_str[:changed_action_str.find(":precondition")]\
+                                             + new_preconditions_str\
+                                             + changed_action_str[changed_action_str.find(":effect"):]
+                        new_domain = new_domain + changed_action_str + "\n"
+                    else:
+                        changed_action_str = domain.action_dict[action].action
+                        changed_action_str = changed_action_str.replace(f"(obs_precondition_{step-1})",
+                                                                        f"(obs_precondition_{step})")
+                        new_domain = new_domain + changed_action_str + "\n"
+            new_domain = new_domain + self._create_obs_action(step) + "\n)"
+            return new_domain
+        except:
+            error_message = f"""------------------------------------------------------
+                            Error in prap_model._create_obs_domain()
+                            model_type {self.model_type},
+                            file {self.observation.observation_path}, 
+                            domain: {self.domain_list[step].domain_path}, 
+                            step: {step}"""
+            logging.exception(error_message)
+    def _create_obs_action(self, step):
+        try:
+            domain = self.domain_list[step-1]
+            parameters = self.observation.obs_file.loc[step-1,"action"].split(" ")[1:]
+            if len(parameters) > 0:
+                parameters = [p.lower() for p in parameters]
+            if step == 1:
+                ob = [self.observation.obs_action_sequence[0]]
+                action_key_curr = ob[0].split()[0]
+            else:
+                ob = self.observation.obs_action_sequence[:step]
+                action_key_curr= ob[step-1].split()[0]
+            cur_action = domain.action_dict[action_key_curr]
+            new_action = f"(:action {cur_action.name}_obs_precondition_{step}"
+            idx_parameter_strt = cur_action.action.find(":parameters")
+            idx_parameter_end = idx_parameter_strt + cur_action.action[idx_parameter_strt:].find(")")
+            new_action =  new_action + "\n" +  cur_action.action[idx_parameter_strt:idx_parameter_end + 1] +"\n"
+            parameter_condition = []
+            for param in range(len(cur_action.action_parameters)):
+                parameter_condition.append(f"(= {cur_action.action_parameters[param].parameter} {parameters[param]})")
+            if len(cur_action.action_preconditions_split_and) == 0:
+                action_preconditions_split_and = parameter_condition
+            elif len(cur_action.action_preconditions_split_and) == 1:
+                if "obs_precondition" in cur_action.action_preconditions_split_and[0]:
+                    action_preconditions_split_and = cur_action.action_preconditions_split_and + parameter_condition
+                else:
+                    action_preconditions_split_and = parameter_condition + cur_action.action_preconditions_split_and
+            else:
+                action_preconditions_split_and = [cur_action.action_preconditions_split_and[0]] + parameter_condition \
+                                                 + [c for c in cur_action.action_preconditions_split_and[1:]]
+            cur_pre = f"obs_precondition_{step}"
+            if len(action_preconditions_split_and) == 1 and step > 1: #at this point must be cur_pre
+                other_preconditions = ""
             else:
                 if step == 1:
-                    new_preconditions = \
-                        ["(obs_precondition_1)"] + domain.action_dict[action].action_preconditions_split_and
-                    new_preconditions_str = ":precondition "
-                    if len(new_preconditions) == 1:
-                        new_preconditions_str += new_preconditions[0][:-1]
-                    else:
-                        new_preconditions_str += "(and "
-                        for p in new_preconditions:
-                            new_preconditions_str += p
-                        new_preconditions_str += ")"
-                    changed_action_str = domain.action_dict[action].action
-                    changed_action_str = changed_action_str[:changed_action_str.find(":precondition")]\
-                                         + new_preconditions_str\
-                                         + changed_action_str[changed_action_str.find(":effect"):]
-                    new_domain = new_domain + changed_action_str + "\n"
+                    pre_conditions = action_preconditions_split_and
                 else:
-                    changed_action_str = domain.action_dict[action].action
-                    changed_action_str = changed_action_str.replace(f"(obs_precondition_{step-1})",
-                                                                    f"(obs_precondition_{step})")
-                    new_domain = new_domain + changed_action_str + "\n"
-        new_domain = new_domain + self._create_obs_action(step) + "\n)"
-        return new_domain
-    def _create_obs_action(self, step):
-        domain = self.domain_list[step-1]
-        parameters = self.observation.obs_file.loc[step-1,"action"].split(" ")[1:]
-        if len(parameters) > 0:
-            parameters = [p.lower() for p in parameters]
-        if step == 1:
-            ob = [self.observation.obs_action_sequence[0]]
-            action_key_curr = ob[0].split()[0]
-        else:
-            ob = self.observation.obs_action_sequence[:step]
-            action_key_curr= ob[step-1].split()[0]
-        cur_action = domain.action_dict[action_key_curr]
-        new_action = f"(:action {cur_action.name}_obs_precondition_{step}"
-        idx_parameter_strt = cur_action.action.find(":parameters")
-        idx_parameter_end = idx_parameter_strt + cur_action.action[idx_parameter_strt:].find(")")
-        new_action =  new_action + "\n" +  cur_action.action[idx_parameter_strt:idx_parameter_end + 1] +"\n"
-        parameter_condition = []
-        for param in range(len(cur_action.action_parameters)):
-            parameter_condition.append(f"(= {cur_action.action_parameters[param].parameter} {parameters[param]})")
-        if len(cur_action.action_preconditions_split_and) == 0:
-            action_preconditions_split_and = parameter_condition
-        elif len(cur_action.action_preconditions_split_and) == 1:
-            if "obs_precondition" in cur_action.action_preconditions_split_and[0]:
-                action_preconditions_split_and = cur_action.action_preconditions_split_and + parameter_condition
-            else:
-                action_preconditions_split_and = parameter_condition + cur_action.action_preconditions_split_and
-        else:
-            action_preconditions_split_and = [cur_action.action_preconditions_split_and[0]] + parameter_condition \
-                                             + [c for c in cur_action.action_preconditions_split_and[1:]]
-        cur_pre = f"obs_precondition_{step}"
-        if len(action_preconditions_split_and) == 1 and step > 1: #at this point must be cur_pre
-            other_preconditions = ""
-        else:
+                    pre_conditions = action_preconditions_split_and[1:]
+                if len(pre_conditions) == 0:
+                    other_preconditions = ""
+                if len(pre_conditions) == 1:
+                    other_preconditions = pre_conditions[0]
+                else:
+                    #other_preconditions = "(and"
+                    other_preconditions = ""
+                    for pre_condition in pre_conditions:
+                        other_preconditions += pre_condition
+                    #other_preconditions += ")"
             if step == 1:
-                pre_conditions = action_preconditions_split_and
+                #new_action = new_action  + ":precondition(" +  other_preconditions + ")"
+                if other_preconditions == "":
+                    new_action = new_action + f":precondition(not({cur_pre}))"
+                else:
+                    new_action = new_action + f":precondition(and(not({cur_pre}))" + other_preconditions+ ")"
             else:
-                pre_conditions = action_preconditions_split_and[1:]
-            if len(pre_conditions) == 0:
-                other_preconditions = ""
-            if len(pre_conditions) == 1:
-                other_preconditions = pre_conditions[0]
-            else:
-                #other_preconditions = "(and"
-                other_preconditions = ""
-                for pre_condition in pre_conditions:
-                    other_preconditions += pre_condition
-                #other_preconditions += ")"
-        if step == 1:
-            #new_action = new_action  + ":precondition(" +  other_preconditions + ")"
-            if other_preconditions == "":
-                new_action = new_action + f":precondition(not({cur_pre}))"
-            else:
-                new_action = new_action + f":precondition(and(not({cur_pre}))" + other_preconditions+ ")"
-        else:
-            before_pre = f"obs_precondition_{step-1}"
-            if other_preconditions == "":
-                new_action = new_action + f":precondition(and({before_pre})(not({cur_pre})))"
-            #new_action = new_action  + f":precondition(and({before_pre})(" + other_preconditions + "))"
-            else:
-                new_action = new_action + f":precondition(and({before_pre})(not({cur_pre}))" + other_preconditions + ")"
-        #check if parameters exist
-        new_action = new_action + " :effect"
-        idx_and = cur_action.action_effects.find("and")+3
-        if len(cur_action.action_parameters) == 0:
-            new_action = new_action + cur_action.action_effects[:idx_and] + f" ({cur_pre}) " + cur_action.action_effects[idx_and:] + ")"
-        elif len(cur_action.action_parameters) == 1:
-            new_action = new_action + cur_action.action_effects[:idx_and] + f" (when "
-            new_action = new_action  + f"(= {cur_action.action_parameters[0].parameter} {ob[len(ob)-1].split()[0+1]}) "
-            new_action = new_action + f" ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
-        elif len(cur_action.action_parameters) > 1:
-            new_action = new_action + cur_action.action_effects[:idx_and] + f" (when (and"
-            for i in range(len(cur_action.action_parameters)):
-                new_action = new_action + f"(= {cur_action.action_parameters[i].parameter} {ob[len(ob)-1].split()[i+1]}) "
-            new_action = new_action + f") ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
-        return new_action
+                before_pre = f"obs_precondition_{step-1}"
+                if other_preconditions == "":
+                    new_action = new_action + f":precondition(and({before_pre})(not({cur_pre})))"
+                #new_action = new_action  + f":precondition(and({before_pre})(" + other_preconditions + "))"
+                else:
+                    new_action = new_action + f":precondition(and({before_pre})(not({cur_pre}))" + other_preconditions + ")"
+            #check if parameters exist
+            new_action = new_action + " :effect"
+            idx_and = cur_action.action_effects.find("and")+3
+            if len(cur_action.action_parameters) == 0:
+                new_action = new_action + cur_action.action_effects[:idx_and] + f" ({cur_pre}) " + cur_action.action_effects[idx_and:] + ")"
+            elif len(cur_action.action_parameters) == 1:
+                new_action = new_action + cur_action.action_effects[:idx_and] + f" (when "
+                new_action = new_action  + f"(= {cur_action.action_parameters[0].parameter} {ob[len(ob)-1].split()[0+1]}) "
+                new_action = new_action + f" ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
+            elif len(cur_action.action_parameters) > 1:
+                new_action = new_action + cur_action.action_effects[:idx_and] + f" (when (and"
+                for i in range(len(cur_action.action_parameters)):
+                    new_action = new_action + f"(= {cur_action.action_parameters[i].parameter} {ob[len(ob)-1].split()[i+1]}) "
+                new_action = new_action + f") ({cur_pre})) " + cur_action.action_effects[idx_and:]  + ")"
+            return new_action
+        except:
+            error_message = f"""------------------------------------------------------
+                            Error in prap_model._create_obs_action()
+                            model_type {self.model_type},
+                            file {self.observation.observation_path}, 
+                            domain: {self.domain_list[step].domain_path}, 
+                            step: {step}"""
+            logging.exception(error_message)
     def _create_obs_predicates(self, step):
-        domain = self.domain_list[step-1]
-        predicates_string = "(:predicates"
-        for predicate in domain.predicates:
-            predicates_string = predicates_string + " " + predicate
-        predicates_string = predicates_string + " " + f"(obs_precondition_{step}" + "))"
-        return predicates_string
+        try:
+            domain = self.domain_list[step-1]
+            predicates_string = "(:predicates"
+            for predicate in domain.predicates:
+                predicates_string = predicates_string + " " + predicate
+            predicates_string = predicates_string + " " + f"(obs_precondition_{step}" + "))"
+            return predicates_string
+        except:
+            error_message = f"""------------------------------------------------------
+                               Error in prap_model._create_obs_predicates()
+                               model_type {self.model_type},
+                               file {self.observation.observation_path}, 
+                               domain: {self.domain_list[step].domain_path}, 
+                               step: {step}"""
     def _create_obs_con_goal(self, goal, step = 1):
-        new_goal = f"(define (problem {goal.name})\n"
-        new_goal = new_goal + f"(:domain {self.domain_list[step - 1].name})"
-        new_goal = new_goal + "\n(:objects)"
-        new_goal = new_goal + "\n(:init "
-        for start_fluent in goal.start_fluents:
-            new_goal = new_goal + "\n" + start_fluent
-        for i in range(step):
-            new_goal = new_goal + f"\n(obs_precondition_{i + 1})"
-        new_goal = new_goal + "\n)"
-        new_goal = new_goal + "\n(:goal (and "
-        for goal_fluent in goal.goal_fluents:
-            new_goal = new_goal + "\n" + goal_fluent
-        new_goal = new_goal + ")\n)"
-        new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
-        return new_goal
+        try:
+            new_goal = f"(define (problem {goal.name})\n"
+            new_goal = new_goal + f"(:domain {self.domain_list[step - 1].name})"
+            new_goal = new_goal + "\n(:objects)"
+            new_goal = new_goal + "\n(:init "
+            for start_fluent in goal.start_fluents:
+                new_goal = new_goal + "\n" + start_fluent
+            for i in range(step):
+                new_goal = new_goal + f"\n(obs_precondition_{i + 1})"
+            new_goal = new_goal + "\n)"
+            new_goal = new_goal + "\n(:goal (and "
+            for goal_fluent in goal.goal_fluents:
+                new_goal = new_goal + "\n" + goal_fluent
+            new_goal = new_goal + ")\n)"
+            new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
+            return new_goal
+        except:
+            error_message = f"""------------------------------------------------------
+                                           Error in prap_model._create_obs_con_goal()
+                                           model_type {self.model_type},
+                                           file {self.observation.observation_path}, 
+                                           domain: {self.domain_list[step].domain_path}, 
+                                           step: {step}"""
+            logging.exception(error_message)
     def _create_obs_goal(self, goal, step = 1):
-        new_goal = f"(define (problem {goal.name})\n"
-        new_goal = new_goal + f"(:domain {self.domain_list[step-1].name})"
-        new_goal = new_goal + "\n(:objects)"
-        new_goal = new_goal + "\n(:init "
-        for start_fluent in goal.start_fluents:
-            new_goal = new_goal + "\n" + start_fluent
-        new_goal = new_goal + "\n)"
-        new_goal = new_goal + "\n(:goal (and "
-        for goal_fluent in goal.goal_fluents:
-            new_goal = new_goal + "\n" + goal_fluent
-        #new_goal = new_goal + f"\n(obs_precondition_{step}))\n)"
-        for i in range(step):
-            new_goal = new_goal + f"\n(obs_precondition_{i+1})"
-        new_goal = new_goal + ")\n)"
-        new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
-        return new_goal
+        try:
+            new_goal = f"(define (problem {goal.name})\n"
+            new_goal = new_goal + f"(:domain {self.domain_list[step-1].name})"
+            new_goal = new_goal + "\n(:objects)"
+            new_goal = new_goal + "\n(:init "
+            for start_fluent in goal.start_fluents:
+                new_goal = new_goal + "\n" + start_fluent
+            new_goal = new_goal + "\n)"
+            new_goal = new_goal + "\n(:goal (and "
+            for goal_fluent in goal.goal_fluents:
+                new_goal = new_goal + "\n" + goal_fluent
+            #new_goal = new_goal + f"\n(obs_precondition_{step}))\n)"
+            for i in range(step):
+                new_goal = new_goal + f"\n(obs_precondition_{i+1})"
+            new_goal = new_goal + ")\n)"
+            new_goal = new_goal + f"\n(:metric minimize ({goal.metric_min_func}))\n)"
+            return new_goal
+        except:
+            error_message = f"""------------------------------------------------------
+                                                       Error in prap_model._create_obs_goal()
+                                                       model_type {self.model_type},
+                                                       file {self.observation.observation_path}, 
+                                                       domain: {self.domain_list[step].domain_path}, 
+                                                       step: {step}"""
+            logging.exception(error_message)
     def _add_step(self, step= 1):
-        path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"
-        if not os.path.exists(path):
-            os.mkdir(path)
-        domain_string = self._create_obs_domain(step)
-        with open(path + f"/domain_obs_step_{step}.pddl", "w") as new_domain:
-            new_domain.write(domain_string)
-        self.domain_list.append(pddl_domain(path + f"/domain_obs_step_{step}.pddl"))
-        new_goal_list = []
-        if "goals_remaining" not in self.observation.obs_file.columns:
-            for goal_idx in range(len(self.goal_list[0])):
-                goal = self.goal_list[0][goal_idx]
-                goal_string = self._create_obs_goal(goal, step)
-                with open(path + f"/goal_{goal_idx}_obs_step_{step}.pddl", "w") as new_goal:
-                    new_goal.write(goal_string)
-                new_goal_list.append(pddl_problem(path + f"/goal_{goal_idx}_obs_step_{step}.pddl"))
-            #self.goal_list.append(new_goal_list)
-        else:
-            self.observation.obs_file["goals_remaining"] = self.observation.obs_file["goals_remaining"].astype(str)
-            for goal in self.goal_list[0]:
-                if goal.name in self.observation.obs_file.loc[step - 1, "goals_remaining"]:
+        try:
+            path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"
+            if not os.path.exists(path):
+                os.mkdir(path)
+            domain_string = self._create_obs_domain(step)
+            with open(path + f"/domain_obs_step_{step}.pddl", "w") as new_domain:
+                new_domain.write(domain_string)
+            self.domain_list.append(pddl_domain(path + f"/domain_obs_step_{step}.pddl"))
+            new_goal_list = []
+            if "goals_remaining" not in self.observation.obs_file.columns:
+                for goal_idx in range(len(self.goal_list[0])):
+                    goal = self.goal_list[0][goal_idx]
                     goal_string = self._create_obs_goal(goal, step)
-                    goal_idx = goal.name.split("_")[-1]
                     with open(path + f"/goal_{goal_idx}_obs_step_{step}.pddl", "w") as new_goal:
                         new_goal.write(goal_string)
                     new_goal_list.append(pddl_problem(path + f"/goal_{goal_idx}_obs_step_{step}.pddl"))
-        self.goal_list.append(new_goal_list)
-        if step == 1:
-            shutil.copy(f'{self.planner}', path + f'/{self.planner}')
-    def _remove_step(self, step = 1):
-        self._remove_current_step = step
-        path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"
-        if os.path.exists(path):
-            path_domain = self.domain_list[step].domain_path
-            path_goal = [x.problem_path for x in self.goal_list[step]]
-            self.domain_list = self.domain_list[0:step]
-            self.goal_list = self.goal_list[0:step]
-            os.remove(path_domain)
-            for goal in path_goal:
-                os.remove(goal)
+                #self.goal_list.append(new_goal_list)
+            else:
+                self.observation.obs_file["goals_remaining"] = self.observation.obs_file["goals_remaining"].astype(str)
+                for goal in self.goal_list[0]:
+                    if goal.name in self.observation.obs_file.loc[step - 1, "goals_remaining"]:
+                        goal_string = self._create_obs_goal(goal, step)
+                        goal_idx = goal.name.split("_")[-1]
+                        with open(path + f"/goal_{goal_idx}_obs_step_{step}.pddl", "w") as new_goal:
+                            new_goal.write(goal_string)
+                        new_goal_list.append(pddl_problem(path + f"/goal_{goal_idx}_obs_step_{step}.pddl"))
+            self.goal_list.append(new_goal_list)
             if step == 1:
-                os.remove(path + f"/{self.planner}")
-                [os.remove(file) for file in os.listdir(path)]
-                os.rmdir(path)
+                shutil.copy(f'{self.planner}', path + f'/{self.planner}')
+        except:
+            error_message = f"""------------------------------------------------------
+                                                       Error in prap_model._add_step()
+                                                       model_type {self.model_type},
+                                                       file {self.observation.observation_path}, 
+                                                       domain: {self.domain_list[step].domain_path}, 
+                                                       step: {step}"""
+            logging.exception(error_message)
+    def _remove_step(self, step = 1):
+        try:
+            self._remove_current_step = step
+            path = self.domain_list[0].domain_path.replace(self.domain_list[0].domain_path.split("/")[-1],"") + "temp"
+            if os.path.exists(path):
+                path_domain = self.domain_list[step].domain_path
+                path_goal = [x.problem_path for x in self.goal_list[step]]
+                self.domain_list = self.domain_list[0:step]
+                self.goal_list = self.goal_list[0:step]
+                os.remove(path_domain)
+                for goal in path_goal:
+                    os.remove(goal)
+                if step == 1:
+                    os.remove(path + f"/{self.planner}")
+                    [os.remove(file) for file in os.listdir(path)]
+                    os.rmdir(path)
+        except:
+            error_message = f"""------------------------------------------------------
+                                                       Error in prap_model._remove_step()
+                                                       model_type {self.model_type},
+                                                       file {self.observation.observation_path}, 
+                                                       domain: {self.domain_list[step].domain_path}, 
+                                                       step: {step}"""
     def _thread_solve(self, i, multiprocess, time_step):
         self.task_thread_solve = metric_ff_solver(planner=self.planner)
         if len(self.goal_list[i + 1]) > 0:
@@ -253,6 +313,7 @@ class prap_model(gr_model.gr_model):
                                              #, observation_name= self.observation.name)
             except:
                 error_message = f"""------------------------------------------------------
+                                    Error in prap_model._thread_solve()
                                     model_type {self.model_type},
                                     file {self.observation.observation_path}, 
                                     domain: {self.domain_list[i+1].domain_path}, 
@@ -358,45 +419,54 @@ class prap_model(gr_model.gr_model):
             os.remove(o.problem_path)
         os.rmdir(self.test_path)
     def _check_validity_plan(self, step = 1, mode = "check"):
-        #print(self.steps_observed[step -1].plan["goal_4"])
-        g = 0
-        valid = True
-        remove_list = []
-        while g < len(self.steps_observed[step -1].plan.keys()):
+        try:
+            #print(self.steps_observed[step -1].plan["goal_4"])
+            g = 0
             valid = True
-            goal_key = list(self.steps_observed[step -1].plan.keys())[g]
-            if len(self.steps_observed[step -1].plan[goal_key].keys()) < step:
-                valid = False
-                if mode == "check":
-                    print(f"----------------step {step}, goal {goal_key}: valid is false (length)--------")
-                    m = max(list(self.steps_observed[step - 1].plan[goal_key].keys()))
-                    print("step:",m)
-                    print(self.steps_observed[step -1].plan[goal_key][m])
-                    print("\n")
-                if (step - 1, goal_key) not in remove_list:
-                    remove_list.append((step - 1, goal_key))
-            if valid:
-                idx_key = 0
-                while idx_key < step and valid:
-                    #print(idx_key, self.steps_observed[step - 1].plan[goal_key][idx_key])
-                    if not f"_OBS_PRECONDITION_{idx_key + 1}" in self.steps_observed[step - 1].plan[goal_key][idx_key]:
-                        valid = False
-                        if mode == "check":
-                            print(f"----------------step {step}, goal {goal_key}: valid is false (steps)--------")
-                            print("step:", idx_key+1)
-                            print(self.steps_observed[step - 1].plan[goal_key][idx_key])
-                            print("\n")
-                        if (step - 1, goal_key) not in remove_list:
-                            remove_list.append((step - 1, goal_key))
-                    idx_key += 1
-            g += 1
-        if mode == "remove":
-            if len(remove_list) > 0:
-                for tuple in remove_list:
-                    self.steps_observed[tuple[0]].plan.pop(tuple[1])
-                    self.steps_observed[tuple[0]].plan_cost.pop(tuple[1])
-                    self.steps_observed[tuple[0]].plan_achieved.pop(tuple[1])
-                    self.steps_observed[tuple[0]].time.pop(tuple[1])
+            remove_list = []
+            while g < len(self.steps_observed[step -1].plan.keys()):
+                valid = True
+                goal_key = list(self.steps_observed[step -1].plan.keys())[g]
+                if len(self.steps_observed[step -1].plan[goal_key].keys()) < step:
+                    valid = False
+                    if mode == "check":
+                        print(f"----------------step {step}, goal {goal_key}: valid is false (length)--------")
+                        m = max(list(self.steps_observed[step - 1].plan[goal_key].keys()))
+                        print("step:",m)
+                        print(self.steps_observed[step -1].plan[goal_key][m])
+                        print("\n")
+                    if (step - 1, goal_key) not in remove_list:
+                        remove_list.append((step - 1, goal_key))
+                if valid:
+                    idx_key = 0
+                    while idx_key < step and valid:
+                        #print(idx_key, self.steps_observed[step - 1].plan[goal_key][idx_key])
+                        if not f"_OBS_PRECONDITION_{idx_key + 1}" in self.steps_observed[step - 1].plan[goal_key][idx_key]:
+                            valid = False
+                            if mode == "check":
+                                print(f"----------------step {step}, goal {goal_key}: valid is false (steps)--------")
+                                print("step:", idx_key+1)
+                                print(self.steps_observed[step - 1].plan[goal_key][idx_key])
+                                print("\n")
+                            if (step - 1, goal_key) not in remove_list:
+                                remove_list.append((step - 1, goal_key))
+                        idx_key += 1
+                g += 1
+            if mode == "remove":
+                if len(remove_list) > 0:
+                    for tuple in remove_list:
+                        self.steps_observed[tuple[0]].plan.pop(tuple[1])
+                        self.steps_observed[tuple[0]].plan_cost.pop(tuple[1])
+                        self.steps_observed[tuple[0]].plan_achieved.pop(tuple[1])
+                        self.steps_observed[tuple[0]].time.pop(tuple[1])
+        except:
+            error_message = f"""------------------------------------------------------
+                                                                   Error in prap_model._check_validity_plan()
+                                                                   model_type {self.model_type},
+                                                                   file {self.observation.observation_path}, 
+                                                                   domain: {self.domain_list[step].domain_path}, 
+                                                                   step: {step}"""
+            logging.exception(error_message)
     def perform_solve_observed(self, step = -1, priors = None, beta = 1, multiprocess = True,
                                gm_support = False, _i = 1, _extend_prap = None):
         """
@@ -432,7 +502,6 @@ class prap_model(gr_model.gr_model):
         i = 0
         domain_bug = False
         while i < step and not domain_bug:
-            logging.info(f"step: {i+1}")
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("step:", _i, ",time elapsed:", round(step_time - start_time,2), "s")
@@ -615,64 +684,82 @@ class prap_model(gr_model.gr_model):
         for j in range(i+1,0,-1):
             self._remove_step(j)
     def _append_failure_task(self,i, mff_bug = False):
-        failure_task = metric_ff_solver()
-        failure_task.problem = self.goal_list[i + 1]
-        failure_task.domain = self.domain_list[i + 1]
-        failure_task.domain_path = failure_task.domain.domain_path
-        #print("failure_task.domain_path, ", failure_task.domain_path)
-        path = ""
-        for path_pc in failure_task.domain_path.split("/")[:-1]:
-            path = path + path_pc + "/"
-        #print(path)
-        if not mff_bug:
-            for goal in failure_task.problem:
-                key = goal.name
-                #print(key)
-                file_path = path + f"output_goal_{key}.txt"
-                #print(file_path)
-                if os.path.exists(file_path):
-                    print(file_path, " exists")
-                    f = open(file_path, "r")
-                    failure_task.summary[key] = f.read()
-                    failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                    failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                    failure_task.plan_achieved[key] = 1
-                    failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                    os.remove(file_path)
-        self.steps_observed.append(failure_task)
+        try:
+            failure_task = metric_ff_solver()
+            failure_task.problem = self.goal_list[i + 1]
+            failure_task.domain = self.domain_list[i + 1]
+            failure_task.domain_path = failure_task.domain.domain_path
+            #print("failure_task.domain_path, ", failure_task.domain_path)
+            path = ""
+            for path_pc in failure_task.domain_path.split("/")[:-1]:
+                path = path + path_pc + "/"
+            #print(path)
+            if not mff_bug:
+                for goal in failure_task.problem:
+                    key = goal.name
+                    #print(key)
+                    file_path = path + f"output_goal_{key}.txt"
+                    #print(file_path)
+                    if os.path.exists(file_path):
+                        print(file_path, " exists")
+                        f = open(file_path, "r")
+                        failure_task.summary[key] = f.read()
+                        failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
+                        failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
+                        failure_task.plan_achieved[key] = 1
+                        failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
+                        os.remove(file_path)
+            self.steps_observed.append(failure_task)
+        except:
+            error_message = f"""------------------------------------------------------
+                                                                   Error in prap_model._append_failure_task()
+                                                                   model_type {self.model_type},
+                                                                   file {self.observation.observation_path}, 
+                                                                   domain: {self.domain_list[i].domain_path}, 
+                                                                   i: {i}"""
+            logging.exception(error_message)
     def _calc_prob(self, step = 1, priors= None, beta = 1):
-        if step == 0:
-            print("step must be > 0 ")
-            return None
-        if priors == None:
-            priors_dict = {}
+        try:
+            if step == 0:
+                print("step must be > 0 ")
+                return None
+            if priors == None:
+                priors_dict = {}
+                for key in self.steps_observed[step - 1].plan_achieved.keys():
+                    priors_dict[key] = 1 / len(self.goal_list[step])
+            else:
+                priors_dict = {}
+                for key in self.steps_observed[step - 1].plan_achieved.keys():
+                    priors_dict[key] = priors[key]
+            p_observed = {}
+            p_optimal = {}
             for key in self.steps_observed[step - 1].plan_achieved.keys():
-                priors_dict[key] = 1 / len(self.goal_list[step])
-        else:
-            priors_dict = {}
-            for key in self.steps_observed[step - 1].plan_achieved.keys():
-                priors_dict[key] = priors[key]
-        p_observed = {}
-        p_optimal = {}
-        for key in self.steps_observed[step - 1].plan_achieved.keys():
-            optimal_costs = self.steps_optimal.plan_cost[key]
-            p_optimal_costs_likeli = np.exp(-beta * optimal_costs)
-            p_optimal[key] = priors_dict[key] * p_optimal_costs_likeli
-            observed_costs = self.steps_observed[step - 1].plan_cost[key]
-            p_observed_costs_likeli = np.exp(-beta * observed_costs)
-            p_observed[key] = priors_dict[key] * p_observed_costs_likeli
-        prob = []
-        prob_dict = {}
-        for i in range(len(self.steps_observed[step - 1].plan_achieved.keys())):
-            key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
-            prob.append(p_observed[key] / (p_observed[key] + p_optimal[key]))
-            prob_dict[key] = p_observed[key] / (p_observed[key] + p_optimal[key])
-        prob_normalised_dict = {}
-        for i in range(len(prob)):
-            key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
-            prob_normalised_dict[key] = (prob[i] / (sum(prob)))
-            prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
-        return prob_dict, prob_normalised_dict
+                optimal_costs = self.steps_optimal.plan_cost[key]
+                p_optimal_costs_likeli = np.exp(-beta * optimal_costs)
+                p_optimal[key] = priors_dict[key] * p_optimal_costs_likeli
+                observed_costs = self.steps_observed[step - 1].plan_cost[key]
+                p_observed_costs_likeli = np.exp(-beta * observed_costs)
+                p_observed[key] = priors_dict[key] * p_observed_costs_likeli
+            prob = []
+            prob_dict = {}
+            for i in range(len(self.steps_observed[step - 1].plan_achieved.keys())):
+                key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
+                prob.append(p_observed[key] / (p_observed[key] + p_optimal[key]))
+                prob_dict[key] = p_observed[key] / (p_observed[key] + p_optimal[key])
+            prob_normalised_dict = {}
+            for i in range(len(prob)):
+                key = list(self.steps_observed[step - 1].plan_achieved.keys())[i]
+                prob_normalised_dict[key] = (prob[i] / (sum(prob)))
+                prob_normalised_dict[key] = np.round(prob_normalised_dict[key], 4)
+            return prob_dict, prob_normalised_dict
+        except:
+            error_message = f"""------------------------------------------------------
+                                                                   Error in prap_model.calc_prob()
+                                                                   model_type {self.model_type},
+                                                                   file {self.observation.observation_path}, 
+                                                                   domain: {self.domain_list[i].domain_path}, 
+                                                                   i: {i}"""
+            logging.exception(error_message)
     def plot_prob_goals(self, figsize_x=8, figsize_y=5, adapt_y_axis=False):
         return super().plot_prob_goals(figsize_x=figsize_x, figsize_y=figsize_y, adapt_y_axis=adapt_y_axis)
 if __name__ == '__main__':
