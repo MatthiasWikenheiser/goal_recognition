@@ -311,15 +311,17 @@ class prap_model(gr_model.gr_model):
                                              base_domain = base_domain,
                                              observation_name = self.observation.name)
                                              #, observation_name= self.observation.name)
-            except:
-                error_message = f"""------------------------------------------------------
-                                    Error in prap_model._thread_solve()
-                                    model_type {self.model_type},
-                                    file {self.observation.observation_path}, 
-                                    domain: {self.domain_list[i+1].domain_path}, 
-                                    step: {i+1}"""
-                logging.exception(error_message)
-
+            except Exception as error:
+                if type(error) != psutil.NoSuchProcess:
+                    error_message = f"""------------------------------------------------------
+                                        Error in prap_model._thread_solve()
+                                        model_type {self.model_type},
+                                        file {self.observation.observation_path}, 
+                                        domain: {self.domain_list[i+1].domain_path}, 
+                                        step: {i+1}"""
+                    logging.exception(error_message)
+                if type(error) == psutil.NoSuchProcess:
+                    logging.exception("catchin NoSuchProcess worked fine and this message can now be removed")
     #def __reduce__(self):
      #   return (self.__class__, (self.found_errors,))
     def test_observations(self, test_i = 0):

@@ -361,9 +361,7 @@ class gr_model:
             df_summary_top.rename(columns = {"action": "observed_action"}, inplace = True)
             if _mff_bug:
                 max_observation_action_solved = max(df_summary_agg["observed_action_no"].unique())
-                print(max_observation_action_solved)
                 max_observation_no = max(df_summary_top["observed_action_no"].unique())
-                print(max_observation_no)
                 df_agg_complete = pd.DataFrame()
                 for i in range(max_observation_action_solved+1, max_observation_no+1):
                     goal_list_i = df_summary_top.loc[df_summary_top["observed_action_no"] == i, "goals_remaining"].iloc[0]

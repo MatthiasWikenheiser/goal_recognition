@@ -412,14 +412,17 @@ class gm_model(gr_model.gr_model):
                                              base_domain = base_domain,
                                              observation_name = self.observation.name)
                                              #, observation_name= self.observation.name)
-            except:
-                error_message = f"""------------------------------------------------------
-                                    Error in gm_model._thread_solve()
-                                    model_type {self.model_type},
-                                    file {self.observation.observation_path}, 
-                                    domain: {self.domain_temp.domain_path}, 
-                                    step: {i+1}"""
-                logging.exception(error_message)
+            except Exception as error:
+                if type(error) != psutil.NoSuchProcess:
+                    error_message = f"""------------------------------------------------------
+                                            Error in gm_model._thread_solve()
+                                            model_type {self.model_type},
+                                            file {self.observation.observation_path}, 
+                                            domain: {self.domain_temp.domain_path}, 
+                                            step: {i + 1}"""
+                    logging.exception(error_message)
+                if type(error) == psutil.NoSuchProcess:
+                    logging.exception("catchin NoSuchProcess worked fine and this message can now be removed")
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!
@@ -437,7 +440,6 @@ class gm_model(gr_model.gr_model):
             step = self.observation.obs_len
         i = 0
         while i < step:
-            logging.info(f"step: {i + 1}")
             time_step = self.observation.obs_file.loc[i,"diff_t"]
             step_time = time.time()
             print("\nstep:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
