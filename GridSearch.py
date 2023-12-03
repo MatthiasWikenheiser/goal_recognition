@@ -233,8 +233,27 @@ class GridSearch:
             self.model_idx_to_action_config[model_type] = dict_index_to_hash_action
             self._is_init_gr_models = True
     def _upload_observed_tables(self, model_grid_obs, model_grid_obs_costs, model_grid_obs_steps):
-        #query =
-
+        model_type = model_grid_obs["model_type"].unique()[0]
+        hash_code_model = model_grid_obs["hash_code_model"].unique()[0]
+        hash_code_action = model_grid_obs["hash_code_action"].unique()[0]
+        rl_type = model_grid_obs["rl_type"].unique()[0]
+        station = model_grid_obs["station"].unique()[0]
+        log_file = model_grid_obs["log_file"].unique()[0]
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        for table in ["model_grid_observed", "model_grid_observed_costs", "model_grid_observed_steps"]:
+            if model_type in ["gm_model", "prap_model"]:
+                query = f"""DELETE FROM {table} 
+                            WHERE model_type = '{model_type}'
+                                AND hash_code_model = '{hash_code_model}'
+                                AND hash_code_action = '{hash_code_action}'
+                                AND rl_type = {rl_type}
+                                AND iterations IS NULL
+                                AND station = '{station}'
+                                AND log_file = '{log_file}'
+                """
+            db_gr.execute(query)
+        db_gr.commit()
+        db_gr.close()
         db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
         model_grid_obs.to_sql("model_grid_observed", db_gr, if_exists='append',
                                               index=False)
@@ -284,11 +303,29 @@ class GridSearch:
                     model.perform_solve_observed()
                     model_grid_obs, model_grid_obs_costs, model_grid_obs_steps = \
                         self._create_db_tables(model,hash_code_action,station=station, log_file=log_file)
-                    self._upload_observed_tables(model_grid_obs, model_grid_obs_costs, model_grid_obs_steps)
+                    self._upload_observed_tables(model_grid_obs=model_grid_obs,
+                                                 model_grid_obs_costs= model_grid_obs_costs,
+                                                 model_grid_obs_steps = model_grid_obs_steps)
+                    try:
+                        [x.kill() for x in psutil.process_iter() if f"{planner}" in x.name()]
+                    except Exception as error:
+                        if type(error) != psutil.NoSuchProcess:
+                            error_message = f"""------------------------------------------------------
+                                                Error in GridSearch.run()"""
+
+                            logging.exception(error_message)
                     print("--------")
-                    print("cool-down: 20")
+                    print("cool-down: 25")
                     print("--------")
-                    time.sleep((20))
+                    try:
+                        [x.kill() for x in psutil.process_iter() if f"{planner}" in x.name()]
+                    except Exception as error:
+                        if type(error) != psutil.NoSuchProcess:
+                            error_message = f"""------------------------------------------------------
+                                                Error in GridSearch.run()"""
+
+                            logging.exception(error_message)
+                    time.sleep(25)
     def _reconstruct_from_db(self, model, hash_code_action):
         model.steps_optimal.problem = model.goal_list[0]
         model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]

@@ -49,15 +49,12 @@ class metric_ff_solver:
         path_result = path[0]
         for el in path[1:]:
             path_result = path_result + "/" + el
+        path_result += "/"
         return path_result
     def _read_in_output(self):
-        path = ""
-        if len(self.domain_path.split("/")) > 1:
-            for path_pc in self.domain_path.split("/")[:-1]:
-                path = path + path_pc + "/"
-        else:
-            path = os.getcwd() + "/"
+        path = self.path
         achieved_goals = [g for g in os.listdir(path) if "output_goal_" in g and ".txt" in g]
+        #print(achieved_goals)
         for g in achieved_goals:
             key = g.replace(".txt", "").replace("output_goal_", "")
             with open(path + g) as read_output:

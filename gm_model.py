@@ -443,63 +443,70 @@ class gm_model(gr_model.gr_model):
             print("\nstep:", i+1, ",time elapsed:", round(step_time - start_time,2), "s")
             self._add_step(i+1)
             print(self.observation.obs_file.loc[i,"action"] + ", " + str(time_step) + " seconds to solve")
-            try:
-                #time_step = 3
-                t = threading.Thread(target=self._thread_solve,
-                                     args=[i, multiprocess, time_step])
-                t.start()
-            except:
-                pass
-            check_failure_t = time.time()
-            failure = False
-            background_loop = True
-            s = 3
-            while background_loop:
-                time.sleep(0.7)
-                #print("task.solved: ",self.task_thread_solve.solved )
-                if not (self.task_thread_solve.solved == 0 and (time.time() - check_failure_t <= time_step + 10) and len(
-                    self.goal_list[i + 1]) > 0):
-                    background_loop = False
-                if (time.time() - check_failure_t >= time_step + 10):
-                    print("timeout reached")
-                    while s > 0:
-                        print("continue in ", s)
-                        s -= 1
-                        time.sleep(1)
-                        [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                    failure = True
-            if not failure:
-                self.steps_observed.append(self.task_thread_solve)
-            else:
-                [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
-                print("failure, read in files ")
-                failure_task = metric_ff_solver()
-                failure_task.problem = self.goal_list[i + 1]
-                failure_task.domain = self.domain_temp
-                failure_task.domain_path = failure_task.domain.domain_path
-                print("failure_task.domain_path, ", failure_task.domain_path)
-                failure_task._read_in_output()
-                #
+            if i == step -1:
+                last_task = metric_ff_solver()
+                last_task.problem = self.goal_list[i + 1]
+                last_task.domain = self.domain_temp
+                last_task.domain_path = last_task.domain.domain_path
+                self.steps_observed.append(last_task)
+            if i != step-1: #last step
+                try:
+                    #time_step = 3
+                    t = threading.Thread(target=self._thread_solve,
+                                         args=[i, multiprocess, time_step])
+                    t.start()
+                except:
+                    pass
+                check_failure_t = time.time()
+                failure = False
+                background_loop = True
+                s = 3
+                while background_loop:
+                    time.sleep(0.7)
+                    #print("task.solved: ",self.task_thread_solve.solved )
+                    if not (self.task_thread_solve.solved == 0 and (time.time() - check_failure_t <= time_step + 10) and len(
+                        self.goal_list[i + 1]) > 0):
+                        background_loop = False
+                    if (time.time() - check_failure_t >= time_step + 10):
+                        print("timeout reached")
+                        while s > 0:
+                            print("continue in ", s)
+                            s -= 1
+                            time.sleep(1)
+                            [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                        failure = True
+                if not failure:
+                    self.steps_observed.append(self.task_thread_solve)
+                else:
+                    [x.kill() for x in psutil.process_iter() if f"{self.planner}" in x.name()]
+                    print("failure, read in files ")
+                    failure_task = metric_ff_solver()
+                    failure_task.problem = self.goal_list[i + 1]
+                    failure_task.domain = self.domain_temp
+                    failure_task.domain_path = failure_task.domain.domain_path
+                    print("failure_task.domain_path, ", failure_task.domain_path)
+                    failure_task._read_in_output()
+                    #
 
-                #path = ""
-                #for path_pc in failure_task.domain_path.split("/")[:-1]:
-                 #   path = path + path_pc + "/"
-                #print(path)
-                #for goal in failure_task.problem:
-                 #   key = goal.name
-                  #  print(key)
-                   # file_path = path + f"output_goal_{key}.txt"
-                    #print(file_path)
-                    #if os.path.exists(file_path):
-                        #print(file_path, " exists")
-                        #f = open(file_path, "r")
-                        #failure_task.summary[key] = f.read()
-                        #failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key])
-                        #failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key])
-                        #failure_task.plan_achieved[key] = 1
-                        #failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key])
-                        #os.remove(file_path)
-                self.steps_observed.append(failure_task)
+                    #path = ""
+                    #for path_pc in failure_task.domain_path.split("/")[:-1]:
+                     #   path = path + path_pc + "/"
+                    #print(path)
+                    #for goal in failure_task.problem:
+                     #   key = goal.name
+                      #  print(key)
+                       # file_path = path + f"output_goal_{key}.txt"
+                        #print(file_path)
+                        #if os.path.exists(file_path):
+                            #print(file_path, " exists")
+                            #f = open(file_path, "r")
+                            #failure_task.summary[key] = f.read()
+                            #failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key])
+                            #failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key])
+                            #failure_task.plan_achieved[key] = 1
+                            #failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key])
+                            #os.remove(file_path)
+                    self.steps_observed.append(failure_task)
             i += 1
         print("total time-elapsed: ", round(time.time() - start_time,2), "s")
         for i in range(step):
