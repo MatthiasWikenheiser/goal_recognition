@@ -148,6 +148,52 @@ class GridSearch:
         for model in self.model_list_optimal:
             self._reconstruct_from_db(model = model, hash_code_action=hash_code_action_list[hash_action_idx])
             hash_action_idx += 1
+    def _create_db_tables(self, model, hash_code_action, station, log_file):
+        model_type = model.model_type
+        hash_code_model = self.hash_code
+        now = dt.datetime.now()
+        time_stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        if model_type in ["prap_model", "gm_model"]:
+            rl_type = 0
+            iterations = np.nan
+        model_grid_obs = model.summary_level_1.copy()
+        model_grid_obs["model_type"] = model_type
+        model_grid_obs["hash_code_model"] = hash_code_model
+        model_grid_obs["hash_code_action"] = hash_code_action
+        model_grid_obs["rl_type"] = rl_type
+        model_grid_obs["iterations"] = iterations
+        model_grid_obs["station"] = station
+        model_grid_obs["log_file"] = log_file
+        model_grid_obs = model_grid_obs[["model_type", "hash_code_model", "hash_code_action", "rl_type", "iterations",
+                                         "station", "log_file"]
+                                        + [c for c in model.summary_level_1.columns]]
+        model_grid_obs["time_stamp"] = time_stamp
+        model_grid_obs_costs = model.summary_level_2.copy()
+        model_grid_obs_costs["model_type"] = model_type
+        model_grid_obs_costs["hash_code_model"] = hash_code_model
+        model_grid_obs_costs["hash_code_action"] = hash_code_action
+        model_grid_obs_costs["rl_type"] = rl_type
+        model_grid_obs_costs["iterations"] = iterations
+        model_grid_obs_costs["station"] = station
+        model_grid_obs_costs["log_file"] = log_file
+        model_grid_obs_costs = model_grid_obs_costs[["model_type", "hash_code_model", "hash_code_action", "rl_type", "iterations",
+                                         "station", "log_file"]
+                                        + [c for c in model.summary_level_2.columns]]
+        model_grid_obs_costs["time_stamp"] = time_stamp
+        model_grid_obs_steps = model.summary_level_3.copy()
+        model_grid_obs_steps["model_type"] = model_type
+        model_grid_obs_steps["hash_code_model"] = hash_code_model
+        model_grid_obs_steps["hash_code_action"] = hash_code_action
+        model_grid_obs_steps["rl_type"] = rl_type
+        model_grid_obs_steps["iterations"] = iterations
+        model_grid_obs_steps["station"] = station
+        model_grid_obs_steps["log_file"] = log_file
+        model_grid_obs_steps = model_grid_obs_steps[
+            ["model_type", "hash_code_model", "hash_code_action", "rl_type", "iterations",
+             "station", "log_file"]
+            + [c for c in model.summary_level_3.columns]]
+        model_grid_obs_steps["time_stamp"] = time_stamp
+        return model_grid_obs, model_grid_obs_costs, model_grid_obs_steps
     def _init_gr_models(self,model_types, planner):
         model_types = model_types if type(model_types) == list else [model_types]
         action_list = list(self._domain_root.action_dict.keys())
@@ -186,7 +232,18 @@ class GridSearch:
             self.model_dict_obs[model_type] = dict_obs
             self.model_idx_to_action_config[model_type] = dict_index_to_hash_action
             self._is_init_gr_models = True
-    def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False):
+    def _upload_observed_tables(self, model_grid_obs, model_grid_obs_costs, model_grid_obs_steps):
+        #query =
+
+        db_gr = db.connect("/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db")
+        model_grid_obs.to_sql("model_grid_observed", db_gr, if_exists='append',
+                                              index=False)
+        model_grid_obs_costs.to_sql("model_grid_observed_costs", db_gr, if_exists='append',
+                              index=False)
+        model_grid_obs_steps.to_sql("model_grid_observed_steps", db_gr, if_exists='append',
+                                    index=False)
+        db_gr.close()
+    def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False, idx_strt= 0, idx_end = None):
         if not self._is_init_gr_models:
             print("init goal regocnition models")
             self._init_gr_models(model_types = model_types, planner = planner)
@@ -202,8 +259,11 @@ class GridSearch:
             os.remove(self.path + f"{self.planner}")
         for model_type in model_types:
             print("\n********", model_type, "********")
-            for i in range(len(self.grid)):
-                print("hash_action_config: ", self.model_idx_to_action_config[model_type][i])
+            if idx_end is None:
+                idx_end = len(self.grid)
+            for i in range(idx_strt, idx_end):
+                hash_code_action = self.model_idx_to_action_config[model_type][i]
+                print("hash_action_config: ", hash_code_action)
                 info_message = f"""*******************
                                   RUN-GRID-SEARCH 
                                   model_name: {self.name},
@@ -222,18 +282,13 @@ class GridSearch:
                     log_file = model.observation.observation_path.split("/")[-1]
                     print(f"\tStation: {station}, File: {log_file}")
                     model.perform_solve_observed()
+                    model_grid_obs, model_grid_obs_costs, model_grid_obs_steps = \
+                        self._create_db_tables(model,hash_code_action,station=station, log_file=log_file)
+                    self._upload_observed_tables(model_grid_obs, model_grid_obs_costs, model_grid_obs_steps)
                     print("--------")
-                    print("cool-down: 30s")
+                    print("cool-down: 20")
                     print("--------")
-                    time.sleep((30))
-
-
-                    #logging.info(f"hash_code_action {self.model_idx_to_action_config[model_type][i]}")
-
-
-
-
-
+                    time.sleep((20))
     def _reconstruct_from_db(self, model, hash_code_action):
         model.steps_optimal.problem = model.goal_list[0]
         model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
