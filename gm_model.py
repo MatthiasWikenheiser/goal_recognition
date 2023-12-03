@@ -421,8 +421,6 @@ class gm_model(gr_model.gr_model):
                                             domain: {self.domain_temp.domain_path}, 
                                             step: {i + 1}"""
                     logging.exception(error_message)
-                if type(error) == psutil.NoSuchProcess:
-                    logging.exception("catchin NoSuchProcess worked fine and this message can now be removed")
     def perform_solve_observed(self, step = -1, multiprocess = True):
         """
         BEFORE running this, RUN perform_solve_optimal!

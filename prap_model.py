@@ -320,8 +320,6 @@ class prap_model(gr_model.gr_model):
                                         domain: {self.domain_list[i+1].domain_path}, 
                                         step: {i+1}"""
                     logging.exception(error_message)
-                if type(error) == psutil.NoSuchProcess:
-                    logging.exception("catchin NoSuchProcess worked fine and this message can now be removed")
     #def __reduce__(self):
      #   return (self.__class__, (self.found_errors,))
     def test_observations(self, test_i = 0):

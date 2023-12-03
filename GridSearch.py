@@ -213,9 +213,20 @@ class GridSearch:
                                 """
                 logging.info(info_message)
                 for model in self.model_dict_obs[model_type][i]:
+                    root_path = ""
+                    for el in model.domain_root.domain_path.split("/")[:-1]:
+                        root_path += el +"/"
+                    print(root_path)
+                    os.chdir(root_path)
                     station = model.observation.observation_path.split("/")[-2]
                     log_file = model.observation.observation_path.split("/")[-1]
                     print(f"\tStation: {station}, File: {log_file}")
+                    model.perform_solve_observed()
+                    print("--------")
+                    print("cool-down: 30s")
+                    print("--------")
+                    time.sleep((30))
+
 
                     #logging.info(f"hash_code_action {self.model_idx_to_action_config[model_type][i]}")
 
