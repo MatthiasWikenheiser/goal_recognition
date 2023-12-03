@@ -650,13 +650,15 @@ class prap_model(gr_model.gr_model):
                         os.rmdir(bug_path)
                 if mff_bug:
                     print("------------MFF-BUG------------")
-                    self._append_failure_task(i)
-                    i+=1
-                    while i < step:
-                        self._add_step(i + 1)
-                        self._append_failure_task(i)
-                        i+=1
-                    i -= 1
+                    #delete: self._append_failure_task(i)
+                    step = i
+
+                    #i+=1
+                    #while i < step:
+                        #self._add_step(i + 1)
+                        #self._append_failure_task(i)
+                        #i+=1
+                    #i -= 1
                 if not mff_bug:
                     self._append_failure_task(i)
             time.sleep(1)
@@ -679,7 +681,7 @@ class prap_model(gr_model.gr_model):
             self.prob_dict_list.append(result_probs[0])
             self.prob_nrmlsd_dict_list.append(result_probs[1])
             self.predicted_step[i + 1] = self._predict_step(step=i)
-        self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary()
+        self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary(_mff_bug= mff_bug)
         time.sleep(1)
         for j in range(i+1,0,-1):
             self._remove_step(j)
@@ -695,20 +697,21 @@ class prap_model(gr_model.gr_model):
                 path = path + path_pc + "/"
             #print(path)
             if not mff_bug:
-                for goal in failure_task.problem:
-                    key = goal.name
-                    #print(key)
-                    file_path = path + f"output_goal_{key}.txt"
+                failure_task._read_in_output()
+                #for goal in failure_task.problem:
+                    #key = goal.name
+                    ##print(key)
+                    #file_path = path + f"output_goal_{key}.txt"
                     #print(file_path)
-                    if os.path.exists(file_path):
-                        print(file_path, " exists")
-                        f = open(file_path, "r")
-                        failure_task.summary[key] = f.read()
-                        failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key], file_path)
-                        failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key], file_path)
-                        failure_task.plan_achieved[key] = 1
-                        failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key], file_path)
-                        os.remove(file_path)
+                    #if os.path.exists(file_path):
+                        #print(file_path, " exists")
+                        #f = open(file_path, "r")
+                        #failure_task.summary[key] = f.read()
+                        #failure_task.plan[key] = failure_task._legal_plan(failure_task.summary[key])
+                        #failure_task.plan_cost[key] = failure_task._cost(failure_task.summary[key])
+                        #failure_task.plan_achieved[key] = 1
+                        #failure_task.time[key] = failure_task._time_2_solve(failure_task.summary[key])
+                        #os.remove(file_path)
             self.steps_observed.append(failure_task)
         except:
             error_message = f"""------------------------------------------------------

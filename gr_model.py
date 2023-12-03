@@ -219,19 +219,36 @@ class gr_model:
         if multiprocess:
             self.mp_seconds = round(time.time() - start_time, 2)
     def _predict_step(self, step):
-        #empty shell due to missing perform_solve_observed, just defined here for subclasses
-        dict_proba = self.prob_nrmlsd_dict_list[step]
-        most_likeli = 0
-        key_most_likeli = []
-        for key in list(dict_proba.keys()):
-            if dict_proba[key] > most_likeli and dict_proba[key] > 0:
-                key_most_likeli = [key]
-                most_likeli = dict_proba[key]
-            elif dict_proba[key] == most_likeli and dict_proba[key] > 0:
-                key_most_likeli.append(key)
-                most_likeli = dict_proba[key]
-        return key_most_likeli
-    def _create_summary(self):
+        try:
+            #empty shell due to missing perform_solve_observed, just defined here for subclasses
+            dict_proba = self.prob_nrmlsd_dict_list[step]
+            most_likeli = 0
+            key_most_likeli = []
+            for key in list(dict_proba.keys()):
+                if dict_proba[key] > most_likeli and dict_proba[key] > 0:
+                    key_most_likeli = [key]
+                    most_likeli = dict_proba[key]
+                elif dict_proba[key] == most_likeli and dict_proba[key] > 0:
+                    key_most_likeli.append(key)
+                    most_likeli = dict_proba[key]
+            return key_most_likeli
+        except:
+            if self.model_type == "prap_model":
+                error_message = f"""------------------------------------------------------
+                                                    Error in gr_model._predict_step()
+                                                    model_type {self.model_type},
+                                                    file {self.observation.observation_path}, 
+                                                    domain: {self.domain_list[step].domain_path}, 
+                                                    step: {step}"""
+            if self.model_type == "gm_model":
+                error_message = f"""------------------------------------------------------
+                                                    Error in gr_model._predict_step()
+                                                    model_type {self.model_type},
+                                                    file {self.observation.observation_path}, 
+                                                    domain: {self.domain_temp.domain_path}, 
+                                                    step: {step}"""
+            logging.exception(error_message)
+    def _create_summary(self, _mff_bug = False):
         try:
             df_summary_agg = pd.DataFrame()
             i = 0
@@ -315,7 +332,8 @@ class gr_model:
             df_summary_top["predicted_goals_no"] = pd.Series(predicted_goals_no)
             df_summary_top["correct_prediction"] = \
                 df_summary_top.apply\
-                    (lambda x: 1 if str(x["label"]) in str(x["predicted_goals"]).replace("_", "") else 0,
+                    (lambda x: 1 if str(x["label"]) != "nan" and \
+                                    str(x["label"]) in str(x["predicted_goals"]).replace("_", "") else 0,
                      axis = 1)
             df_summary_top["observed_action_no"] = self.observation.obs_file.index+1
             df_summary_top = df_summary_top[["observed_action_no"] +
@@ -341,9 +359,40 @@ class gr_model:
                                              'predicted_goals_no', 'correct_prediction', 'prob', 'diff_t','seconds',
                                              'time_left']]
             df_summary_top.rename(columns = {"action": "observed_action"}, inplace = True)
+            if _mff_bug:
+                max_observation_action_solved = max(df_summary_agg["observed_action_no"].unique())
+                print(max_observation_action_solved)
+                max_observation_no = max(df_summary_top["observed_action_no"].unique())
+                print(max_observation_no)
+                df_agg_complete = pd.DataFrame()
+                for i in range(max_observation_action_solved+1, max_observation_no+1):
+                    goal_list_i = df_summary_top.loc[df_summary_top["observed_action_no"] == i, "goals_remaining"].iloc[0]
+                    goal_list_i = goal_list_i.replace("[", "").replace("]", "").replace(" ", "").split(",")
+                    observed_action = df_summary_top.loc[df_summary_top["observed_action_no"] == i, "observed_action"].iloc[0]
+                    df_agg_complete_i = pd.DataFrame({"observed_action_no": [i for _ in range(len(goal_list_i))],
+                                                      "observed_action": [observed_action  for _ in range(len(goal_list_i))],
+                                                      "goal": goal_list_i,
+                                                      "goal_achieved": [0  for _ in range(len(goal_list_i))],
+                                                      "goal_cost": [np.nan for _ in range(len(goal_list_i))],
+                                                      "goals_costs_cumulated": [np.nan for _ in range(len(goal_list_i))],
+                                                      "seconds": [np.nan for _ in range(len(goal_list_i))],
+                                                      "goal_prob": [0  for _ in range(len(goal_list_i))],
+                                                      "goal_prob_nrmlsd": [0 for _ in range(len(goal_list_i))]
+                                                      })
+                    df_agg_complete = pd.concat([df_agg_complete,df_agg_complete_i ])
+                    df_summary_top.loc[df_summary_top["observed_action_no"] == i, "total_goals_no"] = len(goal_list_i)
+                    df_summary_top.loc[df_summary_top["observed_action_no"] == i, "predicted_goals"] = "[]"
+                    df_summary_top.loc[df_summary_top["observed_action_no"] == i, "predicted_goals_no"] = 0
+                df_summary_agg = pd.concat([df_summary_agg, df_agg_complete])
+                df_summary_agg = df_summary_agg.reset_index().iloc[:,1:]
             return df_summary_top, df_summary_agg, df_summary_steps
         except:
-            logging.exception("error in ._create_summary()")
+            error_message = f"""------------------------------------------------------
+                                                Error in gr_model._create_summary()
+                                                model_type {self.model_type},
+                                                file {self.observation.observation_path}"""
+
+            logging.exception(error_message)
     def plot_prob_goals(self, adapt_y_axis, figsize_x=8, figsize_y=5):
         """
         RUN perform_solve_observed BEFORE.
