@@ -20,6 +20,7 @@ import random
 from copy import copy
 from multiprocess_df import _multiprocess_df
 import sqlite3 as db
+import logging
 def save_gridsearch(gs):
     """
     Pickle GridSearch-object in gs.path
@@ -55,6 +56,7 @@ class GridSearch:
                                             obs_action_sequence = self.obs_action_sequence_list[0])
         self.model_list_optimal = []
         self.model_dict_obs = {}
+        self.model_idx_to_action_config = {}
         self.name = name
         self.planner = planner
         self.grid = self._create_df_action_cost()
@@ -156,12 +158,9 @@ class GridSearch:
         model_grid = pd.read_sql_query(query_model_grid, db_gr)
         hash_code_action_list = list(model_grid["hash_code_action"])
         db_gr.close()
-
-
-
-
         for model_type in model_types:
             dict_obs = {}
+            dict_index_to_hash_action = {}
             for i in range(len(self.model_list_optimal)):
                 model_list_obs = []
                 _, hash_code_action = self._hash_action(self.grid, i, action_list)
@@ -183,7 +182,9 @@ class GridSearch:
                     model_list_obs.append(model)
                 dict_obs[i] = model_list_obs
                 dict_obs[hash_code_action] = model_list_obs
+                dict_index_to_hash_action[i] = hash_code_action
             self.model_dict_obs[model_type] = dict_obs
+            self.model_idx_to_action_config[model_type] = dict_index_to_hash_action
             self._is_init_gr_models = True
     def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False):
         if not self._is_init_gr_models:
@@ -199,6 +200,29 @@ class GridSearch:
                 i -= 1
             [os.remove(self.goal_list_path[i].problem_path) for i in range(len(self.goal_list_path))]
             os.remove(self.path + f"{self.planner}")
+        for model_type in model_types:
+            print("\n********", model_type, "********")
+            for i in range(len(self.grid)):
+                print("hash_action_config: ", self.model_idx_to_action_config[model_type][i])
+                info_message = f"""*******************
+                                  RUN-GRID-SEARCH 
+                                  model_name: {self.name},
+                                  model_type: {model_type},
+                                  i/{len(self.grid)-1}: {i}
+                                  hash_action_config: {self.model_idx_to_action_config[model_type][i]}
+                                """
+                logging.info(info_message)
+                for model in self.model_dict_obs[model_type][i]:
+                    station = model.observation.observation_path.split("/")[-2]
+                    log_file = model.observation.observation_path.split("/")[-1]
+                    print(f"\tStation: {station}, File: {log_file}")
+
+                    #logging.info(f"hash_code_action {self.model_idx_to_action_config[model_type][i]}")
+
+
+
+
+
     def _reconstruct_from_db(self, model, hash_code_action):
         model.steps_optimal.problem = model.goal_list[0]
         model.steps_optimal.problem_path = [model.steps_optimal.problem[i].problem_path.split("/")[-1]
