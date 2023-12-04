@@ -281,10 +281,11 @@ class GridSearch:
             print("\n********", model_type, "********")
             if idx_end is None:
                 idx_end = len(self.grid)
-            if not list_idx is None:
+            if list_idx is None:
                 iterate_over = range(idx_strt, idx_end)
             else:
                 iterate_over = list_idx
+            print("iterate_over: ", iterate_over)
             for i in iterate_over:
                 hash_code_action = self.model_idx_to_action_config[model_type][i]
                 print("hash_action_config: ", hash_code_action)
