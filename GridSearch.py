@@ -262,7 +262,8 @@ class GridSearch:
         model_grid_obs_steps.to_sql("model_grid_observed_steps", db_gr, if_exists='append',
                                     index=False)
         db_gr.close()
-    def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False, idx_strt= 0, idx_end = None):
+    def run(self, model_types = "gm_model", planner = "ff_2_1", remove_files = False,
+            idx_strt= 0, idx_end = None, list_idx = None):
         if not self._is_init_gr_models:
             print("init goal regocnition models")
             self._init_gr_models(model_types = model_types, planner = planner)
@@ -280,7 +281,11 @@ class GridSearch:
             print("\n********", model_type, "********")
             if idx_end is None:
                 idx_end = len(self.grid)
-            for i in range(idx_strt, idx_end):
+            if not list_idx is None:
+                iterate_over = range(idx_strt, idx_end)
+            else:
+                iterate_over = list_idx
+            for i in iterate_over:
                 hash_code_action = self.model_idx_to_action_config[model_type][i]
                 print("hash_action_config: ", hash_code_action)
                 info_message = f"""*******************
@@ -300,6 +305,7 @@ class GridSearch:
                     station = model.observation.observation_path.split("/")[-2]
                     log_file = model.observation.observation_path.split("/")[-1]
                     print(f"\tStation: {station}, File: {log_file}")
+                    logging.info(f"\tStation: {station}, File: {log_file}")
                     model.perform_solve_observed()
                     model_grid_obs, model_grid_obs_costs, model_grid_obs_steps = \
                         self._create_db_tables(model,hash_code_action,station=station, log_file=log_file)

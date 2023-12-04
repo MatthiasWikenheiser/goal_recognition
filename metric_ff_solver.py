@@ -131,6 +131,7 @@ class metric_ff_solver:
                     [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
             self._read_in_output()
             self.solved = 1
+            self.processes = {}
             #if self.solved != 0:
                 #[os.remove(fp) for fp in files]
     def _run_metric_ff_mp(self, domain, problem, i, key, base_domain, observation_name):

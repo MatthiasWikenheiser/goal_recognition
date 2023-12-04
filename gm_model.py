@@ -484,6 +484,7 @@ class gm_model(gr_model.gr_model):
                     failure_task.problem = self.goal_list[i + 1]
                     failure_task.domain = self.domain_temp
                     failure_task.domain_path = failure_task.domain.domain_path
+                    failure_task.path = failure_task._path()
                     print("failure_task.domain_path, ", failure_task.domain_path)
                     failure_task._read_in_output()
                     #

@@ -213,7 +213,9 @@ class pddl_domain:
         else:
             return domain_path
     def _clean_domain_comments(self):
-        domain_list = open(self.domain_path, "r").readlines()
+        domain_list_file = open(self.domain_path, "r")
+        domain_list = domain_list_file.readlines()
+        domain_list_file.close()
         for i in range(len(domain_list)):
             if ";" in domain_list[i]:
                 #find position of ; in line

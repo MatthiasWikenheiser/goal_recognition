@@ -567,7 +567,8 @@ class prap_model(gr_model.gr_model):
                 if len(os.listdir(self.path_error_env)) != len(self.error_write_files) and gm_support:
                     for error_file in [x for x in os.listdir(self.path_error_env) if
                                        x not in self.error_write_files]:
-                        read_error = open(self.path_error_env + error_file, "r").read()
+                        with open(self.path_error_env + error_file, "r") as read_error_file:
+                            read_error = read_error_file.read()
                         if "unknown optimization method" in read_error:
                             mff_bug = True
                             domain_bug = True
@@ -577,7 +578,8 @@ class prap_model(gr_model.gr_model):
                 elif len(os.listdir(self.path_error_env)) != len(self.error_write_files):
                     for error_file in [x for x in os.listdir(self.path_error_env) if
                                        x not in self.error_write_files]:
-                        read_error = open(self.path_error_env + error_file, "r").read()
+                        with open(self.path_error_env + error_file, "r") as read_error_file:
+                            read_error = read_error_file.read()
                         if "unknown optimization method" in read_error:
                             mff_bug = True
                             os.remove(self.path_error_env + error_file)
@@ -691,6 +693,7 @@ class prap_model(gr_model.gr_model):
             failure_task.problem = self.goal_list[i + 1]
             failure_task.domain = self.domain_list[i + 1]
             failure_task.domain_path = failure_task.domain.domain_path
+            failure_task.path = failure_task._path()
             #print("failure_task.domain_path, ", failure_task.domain_path)
             path = ""
             for path_pc in failure_task.domain_path.split("/")[:-1]:
