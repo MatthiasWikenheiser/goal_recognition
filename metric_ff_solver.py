@@ -122,14 +122,17 @@ class metric_ff_solver:
                 print("start_", self.processes[key])
                 self.processes[key].start()
             start_time = time.time()
+            read_in = False
             while(len([x for x in psutil.process_iter() if self.planner in x.name()]) != 0):
                 sleep(0.1)
                 if time.time() - start_time >= timeout:
                     self.solved = 2
                     print("time_out finished")
                     self._read_in_output()
+                    read_in = True
                     [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
-            self._read_in_output()
+            if not read_in:
+                self._read_in_output()
             self.solved = 1
             self.processes = {}
             #if self.solved != 0:
