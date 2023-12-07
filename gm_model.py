@@ -133,8 +133,8 @@ class gm_model(gr_model.gr_model):
                     state_fl = gr_model._clean_literal([fl for fl in start_fluents if func_var in fl][0])
                     state_number = float(re.findall('\d+\d*\.*\d*', state_fl)[0])
                     #the following makes this method not general applicable
-                    if func_var == "(tests-remaining)":
-                        state_number -= 1
+                    #if func_var == "(tests-remaining)":
+                        #state_number -= 1
                     if op == "=":
                         if state_number == comp_number:
                             return True, "_"
