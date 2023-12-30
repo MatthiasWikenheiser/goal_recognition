@@ -123,6 +123,7 @@ class metric_ff_solver:
                 self.processes[key].start()
             start_time = time.time()
             read_in = False
+            self.solved = 1
             while(len([x for x in psutil.process_iter() if self.planner in x.name()]) != 0):
                 sleep(0.1)
                 if time.time() - start_time >= timeout:
@@ -133,7 +134,6 @@ class metric_ff_solver:
                     [x.kill() for x in psutil.process_iter() if self.planner in x.name()]
             if not read_in:
                 self._read_in_output()
-            self.solved = 1
             self.processes = {}
             #if self.solved != 0:
                 #[os.remove(fp) for fp in files]

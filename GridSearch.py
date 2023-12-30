@@ -379,9 +379,14 @@ class GridSearch:
         rl_type = []
         iterations = []
         time_stamp = []
+        feasible_models = []
+        for i in range(len(self.model_list_optimal)):
+            goals_existing = [g.name for g in self.model_list_optimal[i].goal_list[0]]
+            if len(goals_existing) == len(self.model_list_optimal[i].steps_optimal.plan.keys()):
+                feasible_models.append(self.model_list_optimal[i])
         for i in  model_idx:
-            for g in self.model_list_optimal[i].goal_list[0]:
-                for s in self.model_list_optimal[i].steps_optimal.plan[g.name].keys():
+            for g in feasible_models[i].goal_list[0]:
+                for s in feasible_models[i].steps_optimal.plan[g.name].keys():
                     hash_code_model.append(self.hash_code)
                     hash_code_action.append(model_grid.loc[i,"hash_code_action"])
                     if not rl:
@@ -392,13 +397,13 @@ class GridSearch:
                         rl_type.append(1)
                         iterations.append(np.nan)
                     goal.append(g.name)
-                    costs.append(self.model_list_optimal[i].steps_optimal.plan_cost[g.name])
-                    seconds.append(self.model_list_optimal[i].steps_optimal.time[g.name])
+                    costs.append(feasible_models[i].steps_optimal.plan_cost[g.name])
+                    seconds.append(feasible_models[i].steps_optimal.time[g.name])
                     time_stamp.append(tmstmp)
                     step.append(s)
-                    act = self.model_list_optimal[i].steps_optimal.plan[g.name][s]
+                    act = feasible_models[i].steps_optimal.plan[g.name][s]
                     action.append(act)
-                    action_cost.append(self.model_list_optimal[i].domain_root.action_dict[act.split(" ")[0]].action_cost)
+                    action_cost.append(feasible_models[i].domain_root.action_dict[act.split(" ")[0]].action_cost)
         result_df = pd.DataFrame({"hash_code_model": hash_code_model,
                                   "hash_code_action": hash_code_action,
                                   "rl_type": rl_type,
