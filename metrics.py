@@ -1,13 +1,43 @@
 import sqlite3 as db
 import pandas as pd
-import numpy as np
 
-db_path = "/home/mwiubuntu/Seminararbeit/db_results/test_goal_recognition.db"
+db_path = "/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db"
+
+def _get_hash_code_models():
+    query = f"""SELECT DISTINCT(hash_code_model) FROM model_grid_observed"""
+    db_gr = db.connect(db_path)
+    df = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    return list(df["hash_code_model"])
+
+def _get_hash_code_actions(hash_code_model):
+    query = f"""SELECT DISTINCT(hash_code_action) 
+                FROM model_grid_observed 
+                WHERE hash_code_model = '{hash_code_model}'"""
+    db_gr = db.connect(db_path)
+    df = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    return list(df["hash_code_action"])
+
+def _get_hash_code_model_name(hash_code_model):
+    query = f"""SELECT model_name FROM model WHERE hash_code_model = '{hash_code_model}'"""
+    db_gr = db.connect(db_path)
+    df = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    return df["model_name"].iloc[0]
+
+def _get_model_types():
+    query = f"""SELECT DISTINCT(model_type) FROM model_grid_observed"""
+    db_gr = db.connect(db_path)
+    df = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    return list(df["model_type"])
 
 def accuracy(model_type, hash_code_model, hash_code_action, rl_type=0, iterations=None,
              station=None, log_file=None,
              file_tuples = None,
              multiclass = True):
+    """under construction"""
     if not file_tuples is None and (not station is None or log_file is None):
         print("please only use parameter file_tuples or station in combination with file_tuples")
     query = f"""SELECT correct_prediction
@@ -30,13 +60,29 @@ def accuracy(model_type, hash_code_model, hash_code_action, rl_type=0, iteration
 
     if not log_file is None:
         query += f"\n\t\t\t\t\t AND log_file = '{log_file}'"
-    print(query)
+    #print(query)
 
     db_gr = db.connect(db_path)
     df = pd.read_sql_query(query, db_gr)
     db_gr.close()
-    return np.mean(df)
+    return df["correct_prediction"].mean()
 
+def collect_accuracy():
+    """under construction"""
+    results = pd.DataFrame()
+    for model_type in _get_model_types():
+        for hash_code_model in _get_hash_code_models():
+            model_name = _get_hash_code_model_name(hash_code_model)
+            for hash_code_action in _get_hash_code_actions(hash_code_model):
+                accur = accuracy(model_type, hash_code_model, hash_code_action, multiclass=True)
+                result_entry = pd.DataFrame({"model_type": [model_type],
+                                             "hash_code_model": [hash_code_model],
+                                             "model_name": [model_name],
+                                             "hash_code_action": [hash_code_action],
+                                             "accuracy": [accur]})
+                results = pd.concat([results, result_entry])
+    results = results.reset_index().iloc[:, 1:]
+    return results
 
 if __name__ == '__main__':
     model_type = "prap_model"
