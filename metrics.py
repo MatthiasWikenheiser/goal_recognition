@@ -1,7 +1,7 @@
 import sqlite3 as db
 import pandas as pd
 
-db_path = "/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db"
+db_path = "/home/mwiubuntu/Seminararbeit/db_results/test_goal_recognition.db"
 
 def _get_hash_code_models():
     query = f"""SELECT DISTINCT(hash_code_model) FROM model_grid_observed"""
@@ -40,6 +40,7 @@ def accuracy(model_type, hash_code_model, hash_code_action, rl_type=0, iteration
     """under construction"""
     if not file_tuples is None and (not station is None or log_file is None):
         print("please only use parameter file_tuples or station in combination with file_tuples")
+        return None
     query = f"""SELECT correct_prediction
                FROM model_grid_observed
                WHERE model_type = '{model_type}'
@@ -84,12 +85,64 @@ def collect_accuracy():
     results = results.reset_index().iloc[:, 1:]
     return results
 
+def convergence_rate(model_type, hash_code_model, hash_code_action, rl_type=0, iterations=None,
+                     station=None, log_file=None):
+    result = _convergence_rate_df(model_type, hash_code_model, hash_code_action, rl_type=rl_type, iterations=iterations,
+                     station=station, log_file=log_file)
+    return result["correct_prediction"].mean()
+
+
+def _convergence_rate_df(model_type, hash_code_model, hash_code_action, rl_type, iterations,
+                     station, log_file):
+    """under construction"""
+    if not((station is None and log_file is None) or (not station is None and not log_file is None)):
+        print("please choose station AND log_file, otherwise set BOTH to None")
+        return None
+    identifier = ["model_type", "hash_code_model", "hash_code_action", "station", "log_file", "rl_type"]
+    if not iterations is None:
+        identifier = identifier + ["iterations"]
+    query = f"""
+               SELECT *
+               FROM model_grid_observed
+               WHERE model_type = '{model_type}'
+                 AND hash_code_model ='{hash_code_model}'
+                 AND hash_code_action = '{hash_code_action}'
+                 AND rl_type = {rl_type}
+                 AND label IS NOT NULL"""
+    if iterations is None:
+        query += "\n\t\t\t\t AND iterations IS NULL"
+    else:
+        query += f"\n\t\t\t\t AND iterations = {iterations}"
+
+    if not station is None:
+        query += f"\n\t\t\t\t AND station = '{station}'"
+
+    if not log_file is None:
+        query += f"\n\t\t\t\t AND log_file = '{log_file}'"
+
+    db_gr = db.connect(db_path)
+    df = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    last_goal_obs = df.groupby(identifier + ["label"], as_index=False)["observed_action_no"].max()
+    last_goal_obs = last_goal_obs.merge(df[identifier + ["label", "observed_action_no", "correct_prediction"]],
+                                        on=identifier + ["label", "observed_action_no"], how="left")
+    return last_goal_obs
+
+
+
+
 if __name__ == '__main__':
-    model_type = "prap_model"
+    model_type = "gm_model"
     hash_code_model = '52f3fe1ade9258da2452dcadb3c9c8836828d95be112a31f36f38f3c'
     hash_code_action = '222b41d94ac651c514738913617e0f3fcc8f57ebf623546630e8540b'
-    station = 'Session1-StationA'
-    log_file = '2_log_Salmonellosis.csv'
-    print(accuracy(model_type, hash_code_model, hash_code_action, multiclass=True, station=station, log_file=log_file))
-
+    station = None#'Session1-StationA'
+    log_file = None#'2_log_Salmonellosis.csv'
+    #print(accuracy(model_type, hash_code_model, hash_code_action, multiclass=True, station=station, log_file=log_file))
+    #results = collect_accuracy()
+    print(convergence_rate(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
+                     station=station, log_file=log_file))
+    print(convergence_rate(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
+                           station=station, log_file=log_file))
+    convergence_rate_df = _convergence_rate_df(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
+                     station=station, log_file=log_file, rl_type=0, iterations = None)
 
