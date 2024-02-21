@@ -47,7 +47,8 @@ def accuracy(model_type, hash_code_model, hash_code_action, rl_type=0, iteration
                      AND hash_code_model ='{hash_code_model}'
 	                 AND hash_code_action = '{hash_code_action}'
 	                 AND rl_type = {rl_type}
-	                 AND label IS NOT NULL"""
+	                 AND label IS NOT NULL
+                     AND total_goals_no > 1"""
     if not multiclass:
         query += "\n\t\t\t\t\t AND predicted_goals_no < 2"
 
@@ -108,7 +109,8 @@ def _convergence_rate_df(model_type, hash_code_model, hash_code_action, rl_type,
                  AND hash_code_model ='{hash_code_model}'
                  AND hash_code_action = '{hash_code_action}'
                  AND rl_type = {rl_type}
-                 AND label IS NOT NULL"""
+                 AND label IS NOT NULL
+                 AND total_goals_no > 1"""
     if iterations is None:
         query += "\n\t\t\t\t AND iterations IS NULL"
     else:
@@ -128,21 +130,40 @@ def _convergence_rate_df(model_type, hash_code_model, hash_code_action, rl_type,
                                         on=identifier + ["label", "observed_action_no"], how="left")
     return last_goal_obs
 
-
+def collect_convergence_rate():
+    """under construction"""
+    results = pd.DataFrame()
+    for model_type in _get_model_types():
+        for hash_code_model in _get_hash_code_models():
+            model_name = _get_hash_code_model_name(hash_code_model)
+            for hash_code_action in _get_hash_code_actions(hash_code_model):
+                cr = convergence_rate(model_type,hash_code_model, hash_code_action)
+                result_entry = pd.DataFrame({"model_type": [model_type],
+                                             "hash_code_model": [hash_code_model],
+                                             "model_name": [model_name],
+                                             "hash_code_action": [hash_code_action],
+                                             "convergence_rate": [cr]})
+                results = pd.concat([results, result_entry])
+    results = results.reset_index().iloc[:, 1:]
+    return results
 
 
 if __name__ == '__main__':
     model_type = "gm_model"
     hash_code_model = '52f3fe1ade9258da2452dcadb3c9c8836828d95be112a31f36f38f3c'
     hash_code_action = '222b41d94ac651c514738913617e0f3fcc8f57ebf623546630e8540b'
-    station = None#'Session1-StationA'
-    log_file = None#'2_log_Salmonellosis.csv'
+    station = None
+    log_file = None #'1_log_Salmonellosis.csv'
     #print(accuracy(model_type, hash_code_model, hash_code_action, multiclass=True, station=station, log_file=log_file))
     #results = collect_accuracy()
+    #results.sort_values("accuracy", ascending= False, inplace = True)
     print(convergence_rate(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
                      station=station, log_file=log_file))
     print(convergence_rate(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
-                           station=station, log_file=log_file))
-    convergence_rate_df = _convergence_rate_df(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
-                     station=station, log_file=log_file, rl_type=0, iterations = None)
+                        station=station, log_file=log_file))
+    #convergence_rate_df = _convergence_rate_df(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
+                     #station=station, log_file=log_file, rl_type=0, iterations = None)
+
+    results = collect_convergence_rate()
+
 
