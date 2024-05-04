@@ -1,6 +1,7 @@
 from pddl import *
-import pickle
 import os
+import gym
+import sys
 
 
 class GymCreator:
@@ -8,55 +9,61 @@ class GymCreator:
         self.domain = domain
         self.problem = problem
         self.env_name = self.domain.name
-        self.pickle_path = self._create_pickle_path()
-        self.pickled_env = f"{self.pickle_path}env_{self.env_name}.pickle"
+        self.py_path = self._create_py_path()
 
-    def _str_pickle(self):
-        str_pickle = f"""
-with open (r"{self.pickled_env}", "wb") as outp:
-    pickle.dump(env, outp, pickle.HIGHEST_PROTOCOL)
-"""
-        return str_pickle
-
-    def _create_pickle_path(self):
-        path = f"{os.getcwd()}/pickle_env/"
+    def _create_py_path(self):
+        path = f"{os.getcwd()}/py_path/"
         if not os.path.exists(path):
             os.mkdir(path)
         return path
 
-    def _read_pickled_env(self):
-        return pickle.load(open(self.pickled_env, "rb"))
 
-    def make_env(self):
-        py_code = f"""
-import pickle
-import sys
-sys.path.append("{os.getcwd()}")
-from pddl import *
+    def _str_import_statements(self):
+        str_imports = f"""
+import subprocess
+def install(module):
+    subprocess.check_call(['pip', 'install', module])
+    print("The module", module, "was installed")
+try:
+    import gym
+except:
+    install('gym')
+    import gym
 
-domain_path = "{self.domain.domain_path}"
-env = pddl_domain(domain_path)
+from gym import Env
+from gym.spaces import Discrete
+        
+        
+        """
+        return str_imports
 
-print(env.domain_path)
-
-{self._str_pickle()}
+    def _str_env_class(self):
+        str_class=f"""
+class PDDLENV(Env):
+    def __init__(self):
+        self.name = "{self.env_name}"
+        self.action_space = Discrete(3)
+        
         
         
 """
-        py_file = self.pickle_path + f"env_{self.env_name}.py"
+        return str_class
+
+    def make_env(self):
+        py_code = f"""{self._str_import_statements()}
+{self._str_env_class()}"""
+
+
+        py_file = self.py_path + "env_pddl.py"
         with open(py_file, "w") as py_env:
             py_env.write(py_code)
-        exec(open(py_file).read())
-        env = self._read_pickled_env()
-        os.remove(py_file)
-        os.remove(self.pickled_env)
-        return env
+        sys.path.append(self.py_path)
+        from env_pddl import PDDLENV
+        return PDDLENV()
 
 
 
 if __name__ == '__main__':
     env_creator = GymCreator(pddl_domain('domain.pddl'), pddl_problem('problem_A.pddl'))
-    print(env_creator.env_name)
-    env_creator._create_pickle_path()
-    domain = env_creator.make_env()
-    print(domain.action_dict)
+    env = env_creator.make_env()
+    print(env.name)
