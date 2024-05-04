@@ -320,7 +320,8 @@ class gr_model:
                     df_summary_steps = pd.concat([df_summary_steps,df_summary_agg_i])
                 except:
                     pass
-            df_summary_steps = df_summary_steps[~(df_summary_steps["action"].isna())]
+            if len(df_summary_steps) != 0:
+                df_summary_steps = df_summary_steps[~(df_summary_steps["action"].isna())]
             df_summary_steps = df_summary_steps.reset_index().iloc[:, 1:]
             df_summary_top = self.observation.obs_file.copy()
             predicted_goals = []

@@ -1,19 +1,22 @@
 import sqlite3 as db
 import pandas as pd
 
-db_path = "/home/mwiubuntu/Seminararbeit/db_results/test_goal_recognition.db"
+db_path = "/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db"
 
-def _get_hash_code_models():
-    query = f"""SELECT DISTINCT(hash_code_model) FROM model_grid_observed"""
+def _get_hash_code_models(model_type):
+    query = f"""SELECT DISTINCT(hash_code_model) 
+                FROM model_grid_observed
+                WHERE model_type = '{model_type}'"""
     db_gr = db.connect(db_path)
     df = pd.read_sql_query(query, db_gr)
     db_gr.close()
     return list(df["hash_code_model"])
 
-def _get_hash_code_actions(hash_code_model):
+def _get_hash_code_actions(model_type, hash_code_model):
     query = f"""SELECT DISTINCT(hash_code_action) 
                 FROM model_grid_observed 
-                WHERE hash_code_model = '{hash_code_model}'"""
+                WHERE model_type = '{model_type}'
+                    AND hash_code_model = '{hash_code_model}'"""
     db_gr = db.connect(db_path)
     df = pd.read_sql_query(query, db_gr)
     db_gr.close()
@@ -73,9 +76,9 @@ def collect_accuracy():
     """under construction"""
     results = pd.DataFrame()
     for model_type in _get_model_types():
-        for hash_code_model in _get_hash_code_models():
+        for hash_code_model in _get_hash_code_models(model_type):
             model_name = _get_hash_code_model_name(hash_code_model)
-            for hash_code_action in _get_hash_code_actions(hash_code_model):
+            for hash_code_action in _get_hash_code_actions(model_type=model_type, hash_code_model=hash_code_model):
                 accur = accuracy(model_type, hash_code_model, hash_code_action, multiclass=True)
                 result_entry = pd.DataFrame({"model_type": [model_type],
                                              "hash_code_model": [hash_code_model],
@@ -143,9 +146,9 @@ def collect_convergence_rate():
     """under construction"""
     results = pd.DataFrame()
     for model_type in _get_model_types():
-        for hash_code_model in _get_hash_code_models():
+        for hash_code_model in _get_hash_code_models(model_type=model_type):
             model_name = _get_hash_code_model_name(hash_code_model)
-            for hash_code_action in _get_hash_code_actions(hash_code_model):
+            for hash_code_action in _get_hash_code_actions(model_type=model_type, hash_code_model=hash_code_model):
                 cr = convergence_rate(model_type,hash_code_model, hash_code_action)
                 result_entry = pd.DataFrame({"model_type": [model_type],
                                              "hash_code_model": [hash_code_model],
@@ -160,9 +163,9 @@ def collect_convergence_point(exclude_null_predictions=True):
     """under construction"""
     results = pd.DataFrame()
     for model_type in _get_model_types():
-        for hash_code_model in _get_hash_code_models():
-            model_name = _get_hash_code_model_name(hash_code_model)
-            for hash_code_action in _get_hash_code_actions(hash_code_model):
+        for hash_code_model in _get_hash_code_models(model_type=model_type):
+            model_name = _get_hash_code_model_name(hash_code_model=hash_code_model)
+            for hash_code_action in _get_hash_code_actions(model_type=model_type,hash_code_model=hash_code_model):
                 print(model_type, hash_code_model, model_name, hash_code_action, exclude_null_predictions)
                 cp = convergence_point(model_type, hash_code_model, hash_code_action,
                                        exclude_null_predictions=exclude_null_predictions)
@@ -226,36 +229,31 @@ def convergence_point(model_type, hash_code_model, hash_code_action, rl_type=0, 
                         not_keep = True
                     elif correct_prediction_j == 0 and predicted_goals_no != 0:
                         not_keep = False
-            try:
-                numerator += (k_i/n_i)
-            except:
-                null_values_exist = True
-    if not null_values_exist:
-        try:
-            return numerator/m
-        except:
-            return None
-    else:
-        return None
+            numerator += (k_i/n_i)
+    return numerator/m
+
 
 if __name__ == '__main__':
-    model_type = "prap_model"
-    hash_code_model = '52f3fe1ade9258da2452dcadb3c9c8836828d95be112a31f36f38f3c'
-    hash_code_action = '222b41d94ac651c514738913617e0f3fcc8f57ebf623546630e8540b'
-    station = None#'Session1-StationC'
-    log_file = None#'1_log_Salmonellosis.csv'
+    #model_type = "prap_model"
+    #hash_code_model = '52f3fe1ade9258da2452dcadb3c9c8836828d95be112a31f36f38f3c'
+    #hash_code_action = '222b41d94ac651c514738913617e0f3fcc8f57ebf623546630e8540b'
+    #station = None#'Session1-StationC'
+    #log_file = None#'1_log_Salmonellosis.csv'
     #print(accuracy(model_type, hash_code_model, hash_code_action, multiclass=True, station=station, log_file=log_file))
-    #results = collect_accuracy()
-    #results.sort_values("accuracy", ascending= False, inplace = True)
+    print("accuracy_collect")
+    accuracy_collect = collect_accuracy()
+    accuracy_collect.sort_values("accuracy", ascending= False, inplace = True)
+    accuracy_collect = accuracy_collect.reset_index().iloc[:, 1:]
     #print(convergence_rate(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
                      #station=station, log_file=log_file))
     #print(convergence_rate(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
                         #station=station, log_file=log_file))
     #convergence_rate_df = _convergence_rate_df(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
                      #station=station, log_file=log_file, rl_type=0, iterations = None)
-
-    #convergence_collect = collect_convergence_rate()
-    #convergence_collect.sort_values("convergence_rate", ascending=False, inplace=True)
+    print("convergence_rate_collect")
+    convergence_rate_collect = collect_convergence_rate()
+    convergence_rate_collect.sort_values("convergence_rate", ascending=False, inplace=True)
+    convergence_rate_collect = convergence_rate_collect.reset_index().iloc[:,1:]
 
     #cp = convergence_point(model_type=model_type, hash_code_model=hash_code_model,
                            #hash_code_action=hash_code_action, station=station, log_file=log_file,
@@ -263,9 +261,18 @@ if __name__ == '__main__':
     print("exclude_true")
     cp_collect_exclude_true = collect_convergence_point(exclude_null_predictions=True)
     cp_collect_exclude_true.sort_values("convergence_point", ascending=True, inplace=True)
-    #print("exclude_false")
-    #cp_collect_exclude_false = collect_convergence_point(exclude_null_predictions=False)
-    #cp_collect_exclude_false.sort_values("convergence_point", ascending=True, inplace=True)
+    cp_collect_exclude_true = cp_collect_exclude_true.reset_index().iloc[:, 1:]
+    print("exclude_false")
+    cp_collect_exclude_false = collect_convergence_point(exclude_null_predictions=False)
+    cp_collect_exclude_false.sort_values("convergence_point", ascending=True, inplace=True)
+    cp_collect_exclude_false = cp_collect_exclude_false.reset_index().iloc[:, 1:]
 
 
+    results = accuracy_collect.merge(convergence_rate_collect, how = "outer",
+                                     on =['model_type', 'hash_code_model', 'model_name',
+                                          'hash_code_action'])
+    results = results.merge(cp_collect_exclude_true, how="outer",
+                                     on=['model_type', 'hash_code_model', 'model_name',
+                                         'hash_code_action'])
+    results.to_csv("/home/mwiubuntu/Seminararbeit/db_results/zwischenergebnisse.csv",index=False, sep=";")
 
