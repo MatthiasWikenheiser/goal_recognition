@@ -4,19 +4,119 @@ import gym
 import sys
 from itertools import product
 
-class action:
-    def __init__(self, action_dict):
-        self.action_grounded = action_dict["action_grounded"]
-        self.action_ungrounded = action_dict["action_ungrounded"]
-        self.parameter = action_dict["parameter"]
-        self.parameter_variable = action_dict["parameter_variable"]
-        self.instances = action_dict["instances"]
+def _clean_literal(literal):
+    left_bracket_clean = re.sub("\s*\(\s*", "(", literal)
+    right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
+    inner_whitespace_clean = re.sub("\s+", " ", right_bracket_clean)
+    return inner_whitespace_clean
 
-    def precondition(self):
-        pass
+def _split_recursive_and_or(parse_string, key_word):
+    split_list = []
+    strt_idx = parse_string.find(key_word) + len(key_word)
+    new_string = parse_string[strt_idx:]
+    strt_idx += new_string.find("(")
+    end_idx = len(parse_string) - 1
+    parse_back = True
+    while end_idx > 0 and parse_back:
+        if parse_string[end_idx] == ")":
+            parse_string = parse_string[:end_idx]
+            parse_back = False
+        end_idx -= 1
+    c = strt_idx + 1
+    parse_bracket = 1
+    while c < len(parse_string):
+        if parse_string[c] == "(":
+            parse_bracket += 1
+        if parse_string[c] == ")":
+            parse_bracket -= 1
+        if parse_bracket == 0:
+            split_list.append(parse_string[strt_idx:c + 1])
+            strt_idx = c + parse_string[c:].find("(")
+            c = strt_idx + 1
+            parse_bracket = 1
+        c += 1
+    return split_list
 
-    def effects(self):
-        pass
+def _recursive_check_precondition(precondition, fluents,inside_when=False, start_point = False,
+                                  key_word=None):
+    parse_string = precondition
+    if start_point:
+        parse_string = "(" + parse_string + ")"
+    string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n", "")
+    if string_cleaned_blanks.startswith("(and"):
+        key_word = "and"
+    elif string_cleaned_blanks.startswith("(or"):
+        key_word = "or"
+    if key_word in ["and", "or"]:
+        is_true_list = []
+        split_list = _split_recursive_and_or(parse_string, key_word)
+        for split_element in split_list:
+            is_true = _recursive_check_precondition(split_element, fluents, inside_when=inside_when)
+            is_true_list.append(is_true)
+        if key_word == "and":
+            if all(is_true_list):
+                return True
+            else:
+                return False
+        elif key_word == "or":
+            if any(is_true_list):
+                return True
+            else:
+                return False
+    if key_word is None:
+        parse_string = _clean_literal(parse_string)
+        if "=" in parse_string and len(_clean_literal(parse_string).split(" ")) > 1:
+            parse_str_split = parse_string.split(" ")
+            var = parse_str_split[1].replace(" ", "")
+            obj = parse_str_split[2].replace(" ", "").replace(")", "")
+            if "(not(" in parse_string:
+                if var != obj:
+                    return True
+                else:
+                    return False
+            else:
+                if var == obj:
+                    return True
+                else:
+                    return False
+        elif len([op for op in ["=", ">", "<"] if op in parse_string]) == 1 and len(
+                _clean_literal(parse_string).split(" ")) == 1:
+            operator = parse_string[1]
+            reference_point_action = float(re.findall('\d+', parse_string)[0])
+            function_name = re.findall('\(\w+-*_*\w*\)', parse_string)[0]
+            problem_state = \
+            [_clean_literal(fluent) for fluent in fluents if function_name in _clean_literal(fluent)][0]
+            problem_number = float(re.findall('\d+', problem_state)[0])
+            if operator == "=":
+                if problem_number == reference_point_action:
+                    return True
+                else:
+                    return False
+            if operator == ">":
+                if problem_number > reference_point_action:
+                    return True
+                else:
+                    return False
+            if operator == "<":
+                if problem_number < reference_point_action:
+                    return True
+                else:
+                    return False
+        else:
+            if "(not(" in parse_string:
+                rm_not = \
+                re.findall('\(\w+-*_*\w*[\s*\w+\-*_*\w+\-*_*\w+\-*_*\w+\-*_*]*\)', _clean_literal(parse_string))[0]
+                if rm_not not in fluents:
+                    return True
+                else:
+                    return False
+            else:
+                if parse_string in fluents:
+                    return True
+                else:
+                    return False
+
+
 
 class GymCreator:
     def __init__(self, domain, problem, constant_predicates=None, reward_function="costs"):
@@ -139,6 +239,11 @@ except:
     install('sys')
     import sys
 try:
+    import re
+except:
+    install('re')
+    import re
+try:
     import numpy as np
 except:
     install('numpy')
@@ -147,8 +252,7 @@ except:
 from gym import Env
 from gym.spaces import Discrete, MultiBinary, Box, Tuple
 sys.path.append(r'E:/goal_recognition/create_pddl_gym.py')
-from create_pddl_gym import action
-        
+from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition
         
         """
         return str_imports
@@ -188,29 +292,6 @@ from create_pddl_gym import action
                 true_dict[p].append(el)
         return true_dict
 
- #   def _create_action_keys(self):
-        #action_dict_del = {}
-        #i = 0
-        #for action in self.action_params:
-            #action_dict_del[i] = action
-            #i += 1
-        #self.action_params = action_dict_del
-        #return self.action_params
-
-    def _precon_index(self, index):
-        str_func = f"""
-def precon_func_{index}():
-    print("precon_func_{index}")
-        """
-        return str_func
-
-    def _precon_all(self):
-        result = ""
-        for key in self.action_params.keys():
-            result += self._precon_index(key)
-        return result
-
-
     def _ungrounded_actions(self):
         str_ungrounded_actions = "["
         for action in self.domain.action_dict.keys():
@@ -226,11 +307,12 @@ def precon_func_{index}():
             len_params = len(self.domain.action_dict[action].action_parameters)
             if len_params == 0:
                 actions_dict_params = {}
-                actions_dict_params["action_grounded"] = None
+                actions_dict_params["action_grounded"] = action
                 actions_dict_params["action_ungrounded"] = action
-                actions_dict_params["parameter"] = [None]
-                actions_dict_params["parameter_variable"] = [None]
-                actions_dict_params["instances"] = [None]
+                actions_dict_params["parameter"] = []
+                actions_dict_params["parameter_variable"] = []
+                actions_dict_params["instances"] = []
+                actions_dict_params["precondition"] = self.domain.action_dict[action].action_preconditions
                 actions.append(action)
                 action_params.append(actions_dict_params)
             else:
@@ -254,6 +336,8 @@ def precon_func_{index}():
                             actions_dict_params["parameter_variable"] = \
                                 [self.domain.action_dict[action].action_parameters[0].parameter]
                             actions_dict_params["instances"] = [c]
+                            actions_dict_params["precondition"] = \
+                                self.domain.action_dict[action].action_preconditions
                             action_params.append(actions_dict_params)
                     else:
                         constants = []
@@ -276,6 +360,8 @@ def precon_func_{index}():
                             actions_dict_params["parameter"] = param_types
                             actions_dict_params["parameter_variable"] = param_variables
                             actions_dict_params["instances"] = combination_tuples[c]
+                            actions_dict_params["precondition"] = \
+                                self.domain.action_dict[action].action_preconditions
                             action_params.append(actions_dict_params)
                             c+=1
                 else:
@@ -358,6 +444,8 @@ def precon_func_{index}():
                         actions_dict_params["parameter"] = param_list
                         actions_dict_params["parameter_variable"] = param_variables
                         actions_dict_params["instances"] = t
+                        actions_dict_params["precondition"] = \
+                            self.domain.action_dict[action].action_preconditions
                         action_params.append(actions_dict_params)
         action_dict = {}
         i = 0
@@ -367,42 +455,25 @@ def precon_func_{index}():
         action_dict
         return action_dict
 
-
     def _str_env_class(self):
         str_class=f"""
 class PDDLENV(Env):
     def __init__(self):
         self.name = "{self.env_name}"
         self.action_space = Discrete({len(self.action_params.keys())})
-        self.action_dict_del= {self.action_params}
+        self.action_dict= {self.action_params}
         self.ungrounded_actions = {self._ungrounded_actions()}
         self.start_fluents = {self._start_fluents()}
         {self._str_observation_space()}
         _ = self.reset()
-        self._init_action_dict()
 """
         return str_class
 
     def make_env(self):
         py_code = f"""{self._str_import_statements()}
 
-{self._precon_all()}
-
 {self._str_env_class()}
-
-    def _init_action_dict(self):  
-        self.action_dict = dict()
-        for key in self.action_dict_del.keys():
-            self.action_dict[key] = action(self.action_dict_del[key])
-        del self.action_dict_del"""
-
-
-        for action_idx in self.action_params.keys():
-            py_code += f"""
-        self.action_dict[{action_idx}].precondition = precon_func_{action_idx}
-        self.action_dict[{action_idx}].effects = self.hello_world"""
-        
-
+"""
         py_code += f"""
     def reset(self):
         for key in self.start_fluents.keys():
@@ -423,18 +494,39 @@ class PDDLENV(Env):
         for key in self.observation_dict.keys():
             obs = self.observation_dict[key]
             if obs['type'] == 'boolean' and obs["value"] == 1:
-                current_fluents.append(key)
+                current_fluents.append("(" + key +")")
             elif obs['type'] == 'numeric':
-                current_fluents.append(key + '=' + str(obs["value"]))
+                current_fluents.append("(=(" + key + ") " + str(obs["value"]) + ")")        
+        for key in self.always_true:
+            for el in self.always_true[key]:
+                current_fluents.append("(" + el +")")
+
+
         return current_fluents
     
-    def hello_world(self):
-        print("hello_world")
+    def _action_possible(self, action_idx):
+        action = self.action_dict[action_idx]
+        fluents = start_fluents = [_clean_literal(sf) for sf in self.get_current_fluents() ]
+        precondition = action["precondition"]
+        if len(action["parameter_variable"]) > 0:
+            i = 0
+            while i < len(action["parameter_variable"]):
+                param = action["parameter_variable"][i]
+                inst = action["instances"][i]
+                precondition = precondition.replace(param,inst)
+                i+=1
+        precondition_given = _recursive_check_precondition(precondition, fluents, start_point=True)
+        return precondition_given
     
+    def get_all_possible_actions(self):
+        list_actions = []
+        for idx in range(len(self.action_dict.keys())):
+            if self._action_possible(idx):
+                list_actions.append(self.action_dict[idx]["action_grounded"])
+        return list_actions
+
     
 """
-
-
         py_file = self.py_path + "env_pddl.py"
         with open(py_file, "w") as py_env:
             py_env.write(py_code)
@@ -445,10 +537,8 @@ class PDDLENV(Env):
         return PDDLENV()
 
 
-
-
 if __name__ == '__main__':
-    model = 11
+    model = 1
     if model> 8:
         cp = ["person_in_room", "neighboring"]
     else:
@@ -459,19 +549,8 @@ if __name__ == '__main__':
     env_creator_ci = GymCreator(domain, problem, constant_predicates= cp)
     env_ci = env_creator_ci.make_env()
 
-
     env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
     env_toy = env_creator_toy.make_env()
-
-    #d = [x for x in env_creator_ci.action_params if "TALK" in x["action_grounded"]]
-    #e = [x for x in env_creator_ci.action_params if "MOVE" in x["action_grounded"]]
-    #print(env_creator_ci._ungrounded_actions())
-
-    #d = [env_ci.action_dict[key] for key in env_ci.action_dict.keys() if "HAND" not in env_ci.action_dict[key]["action_grounded"]]
-
-    env_ci.action_dict[0].effects()
-    funcs = env_creator_ci._precon_all()
-    env_ci.action_dict[0].effects()
-    env_ci.action_dict[2587].precondition()
-    env_toy.action_dict[7].precondition()
-
+    d = env_ci.get_all_possible_actions()
+    print(env_ci.action_dict[480])
+    print(env_ci._action_possible(480))
