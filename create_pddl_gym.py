@@ -4,6 +4,7 @@ import gym
 import sys
 from itertools import product
 
+
 def _clean_literal(literal):
     left_bracket_clean = re.sub("\s*\(\s*", "(", literal)
     right_bracket_clean = re.sub("\s*\)\s*", ")", left_bracket_clean)
@@ -115,6 +116,196 @@ def _recursive_check_precondition(precondition, fluents,inside_when=False, start
                     return True
                 else:
                     return False
+
+def _split_recursive_and_or(parse_string, key_word):
+    split_list = []
+    strt_idx = parse_string.find(key_word) + len(key_word)
+    new_string = parse_string[strt_idx:]
+    strt_idx += new_string.find("(")
+    end_idx = len(parse_string) - 1
+    parse_back = True
+    while end_idx > 0 and parse_back:
+        if parse_string[end_idx] == ")":
+            parse_string = parse_string[:end_idx]
+            parse_back = False
+        end_idx -= 1
+    c = strt_idx + 1
+    parse_bracket = 1
+    while c < len(parse_string):
+        if parse_string[c] == "(":
+            parse_bracket += 1
+        if parse_string[c] == ")":
+            parse_bracket -= 1
+        if parse_bracket == 0:
+            split_list.append(parse_string[strt_idx:c + 1])
+            strt_idx = c + parse_string[c:].find("(")
+            c = strt_idx + 1
+            parse_bracket = 1
+        c += 1
+    return split_list
+
+def _recursive_effect_check(parse_string, zipped_parameters, start_fluents,
+                            inside_when=False, key_word=None, is_consequence = False):
+
+    effects = []
+    string_cleaned_blanks = parse_string.replace("\t", "").replace(" ", "").replace("\n", "")
+    if string_cleaned_blanks.startswith("(when"):
+        key_word = "when"
+    elif string_cleaned_blanks.startswith("(and"):
+        key_word = "and"
+    elif string_cleaned_blanks.startswith("(or"):
+        key_word = "or"
+    if key_word in ["and", "or"]:
+        is_true_list = []
+        split_list = _split_recursive_and_or(parse_string, key_word)
+        if inside_when:
+            for split_element in split_list:
+                is_true, effect = _recursive_effect_check(split_element, zipped_parameters, start_fluents,
+                                                               inside_when=inside_when,
+                                                               is_consequence = is_consequence)
+                is_true_list.append(is_true)
+                [effects.append(e) for e in effect if e not in effects]
+            if key_word == "and":
+                if all(is_true_list):
+                    return True, effects
+                else:
+                    return False, "_"
+            elif key_word == "or":
+                if any(is_true_list):
+                    return True, effects
+                else:
+                    return False, "_"
+        else:
+            for split_element in split_list:
+                is_true, effect = _recursive_effect_check(split_element, zipped_parameters,
+                                                               start_fluents,
+                                                               inside_when=inside_when,
+                                                               is_consequence= is_consequence)
+                if is_true:
+                    [effects.append(e) for e in effect if e not in effects]
+            return True, effects
+    if key_word == "when":
+        new_string = parse_string[parse_string.find("when"):]
+        new_string = new_string[new_string.find("("):]
+        parse_bracket = 1
+        c = 1
+        parse = True
+        while (c < len(new_string) and parse):
+            if new_string[c] == "(":
+                parse_bracket += 1
+            if new_string[c] == ")":
+                parse_bracket -= 1
+            if parse_bracket == 0:
+                consequence = new_string[c + 1:]
+                cons_idx = 0
+                parse_con = True
+                while cons_idx < len(consequence) and parse_con:
+                    if consequence[cons_idx] == "(":
+                        consequence = consequence[cons_idx:]
+                        parse_con = False
+                    cons_idx += 1
+                cons_idx = len(consequence) - 1
+                parse_con = True
+                while cons_idx > 0 and parse_con:
+                    if consequence[cons_idx] == ")":
+                        consequence = consequence[:cons_idx]
+                        parse_con = False
+                    cons_idx -= 1
+                new_string = new_string[:c + 1]
+                parse = False
+            c += 1
+        is_true, effect = _recursive_effect_check(new_string, zipped_parameters,
+                                                       start_fluents, inside_when=True,
+                                                       is_consequence = is_consequence)
+        if is_true:
+            [effects.append(e) for e in effect if e not in effects]
+            is_true, effect = _recursive_effect_check(consequence, zipped_parameters, start_fluents,
+                                                           inside_when= inside_when, is_consequence = True)
+            [effects.append(e) for e in effect if e not in effects]
+            return True, effects
+        else:
+            return False, "_"
+    if key_word is None:
+        if "?" in parse_string and "=" in parse_string:
+            parse_str_split = parse_string.split(" ")
+            var = parse_str_split[1].replace(" ", "")
+            obj = parse_str_split[2].replace(" ", "").replace(")", "")
+            tuple_param = [zip_param for zip_param in zipped_parameters if zip_param[1] == var][0]
+            if tuple_param[0] == obj and tuple_param[1] == var:
+                return True, "_"
+            else:
+                return False, "_"
+        elif "?" in parse_string and len([op for op in ["=", ">", "<"] if op in parse_string]) == 0:
+            parse_str_split = parse_string.split(" ")
+            var_s = [var.replace(" ", "").replace("\t", "").replace("\n", "").replace("(", "").replace(")", "")
+                     for var in parse_str_split if "?" in var]
+            for var in var_s:
+                tuple_param = [zip_param for zip_param in zipped_parameters if zip_param[1] == var][0]
+                parse_string = parse_string.replace(var, tuple_param[0])
+            return True, [parse_string] + effects
+        elif "?" not in parse_string and len([op for op in ["=", ">", "<"] if op in parse_string]) > 0:
+            cleaned_comp_str = _clean_literal(parse_string)
+            comp_number = float(re.findall('\d+\d*\.*\d*', cleaned_comp_str)[0])
+            op = cleaned_comp_str[1]
+            func_var = re.findall('\(\w*-*_*\w*-*_*\w*-*_*\w*\)', cleaned_comp_str)[0]
+            state_fl = _clean_literal([fl for fl in start_fluents if func_var in fl][0])
+            state_number = float(re.findall('\d+\d*\.*\d*', state_fl)[0])
+            if op == "=":
+                if state_number == comp_number:
+                    return True, "_"
+                else:
+                    return False, "_"
+            if op == ">":
+                if state_number > comp_number:
+                    return True, "_"
+                else:
+                    return False, "_"
+            if op == "<":
+                if state_number < comp_number:
+                    return True, "_"
+                else:
+                    return False, "_"
+        else:
+            if inside_when and not is_consequence:
+                cleaned_parse_str = _clean_literal(parse_string)
+                if "(not" not in cleaned_parse_str:
+                    if cleaned_parse_str in [_clean_literal(fl) for fl in start_fluents]:
+                        return True, "_"
+                    else:
+                        return False, "_"
+                else:
+                    rm_not = re.findall('\(\w+-*_*\w*[\s*\w+\-*_*\w+\-*_*\w+\-*_*\w+\-*_*]*\)',
+                                        cleaned_parse_str)[0]
+                    if rm_not in [_clean_literal(fl) for fl in start_fluents]:
+                        return False, "_"
+                    else:
+                        return True, "_"
+            else:
+                idx = 0
+                parse = True
+                while idx < len(parse_string) and parse:
+                    if parse_string[idx] == "(":
+                        parse_string = parse_string[idx:]
+                        parse = False
+                    idx += 1
+                idx = len(parse_string) - 1
+                parse = True
+                while idx > 0 and parse:
+                    if parse_string[idx] == ")":
+                        parse_string = parse_string[:idx + 1]
+                        parse = False
+                    idx -= 1
+                return True, [parse_string] + effects
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -252,7 +443,8 @@ except:
 from gym import Env
 from gym.spaces import Discrete, MultiBinary, Box, Tuple
 sys.path.append(r'E:/goal_recognition/create_pddl_gym.py')
-from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition
+from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition, _recursive_effect_check
+            
         
         """
         return str_imports
@@ -313,6 +505,7 @@ from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_
                 actions_dict_params["parameter_variable"] = []
                 actions_dict_params["instances"] = []
                 actions_dict_params["precondition"] = self.domain.action_dict[action].action_preconditions
+                actions_dict_params["effects"] = self.domain.action_dict[action].action_effects
                 actions.append(action)
                 action_params.append(actions_dict_params)
             else:
@@ -338,6 +531,8 @@ from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_
                             actions_dict_params["instances"] = [c]
                             actions_dict_params["precondition"] = \
                                 self.domain.action_dict[action].action_preconditions
+                            actions_dict_params["effects"] = \
+                                self.domain.action_dict[action].action_effects
                             action_params.append(actions_dict_params)
                     else:
                         constants = []
@@ -362,6 +557,8 @@ from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_
                             actions_dict_params["instances"] = combination_tuples[c]
                             actions_dict_params["precondition"] = \
                                 self.domain.action_dict[action].action_preconditions
+                            actions_dict_params["effects"] = \
+                                self.domain.action_dict[action].action_effects
                             action_params.append(actions_dict_params)
                             c+=1
                 else:
@@ -446,6 +643,8 @@ from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_
                         actions_dict_params["instances"] = t
                         actions_dict_params["precondition"] = \
                             self.domain.action_dict[action].action_preconditions
+                        actions_dict_params["effects"] = \
+                            self.domain.action_dict[action].action_effects
                         action_params.append(actions_dict_params)
         action_dict = {}
         i = 0
@@ -506,7 +705,7 @@ class PDDLENV(Env):
     
     def _action_possible(self, action_idx):
         action = self.action_dict[action_idx]
-        fluents = start_fluents = [_clean_literal(sf) for sf in self.get_current_fluents() ]
+        fluents = [_clean_literal(sf) for sf in self.get_current_fluents()]
         precondition = action["precondition"]
         if len(action["parameter_variable"]) > 0:
             i = 0
@@ -525,7 +724,14 @@ class PDDLENV(Env):
                 list_actions.append(self.action_dict[idx]["action_grounded"])
         return list_actions
 
-    
+    def _action_effects(self, action_idx):
+        action = self.action_dict[action_idx]
+        action_effects = action["effects"]
+        fluents = [_clean_literal(sf) for sf in self.get_current_fluents()]
+        zipped_parameters = list(zip(action["instances"], action["parameter_variable"]))
+        _, effects = _recursive_effect_check(action_effects, zipped_parameters, fluents)
+        return [_clean_literal(effect) for effect in effects if effect != "_"]
+
 """
         py_file = self.py_path + "env_pddl.py"
         with open(py_file, "w") as py_env:
@@ -538,7 +744,7 @@ class PDDLENV(Env):
 
 
 if __name__ == '__main__':
-    model = 1
+    model = 12
     if model> 8:
         cp = ["person_in_room", "neighboring"]
     else:
@@ -551,6 +757,14 @@ if __name__ == '__main__':
 
     env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
     env_toy = env_creator_toy.make_env()
-    d = env_ci.get_all_possible_actions()
-    print(env_ci.action_dict[480])
-    print(env_ci._action_possible(480))
+    #d = env_ci.get_all_possible_actions()
+    #print(env_ci.action_dict[480])
+    #print(env_ci._action_possible(480))
+    collect = []
+    for key in range(len(env_ci.action_dict.keys())):
+        effects = env_ci._action_effects(key)
+        print(env_ci.action_dict[key]["action_grounded"])
+        print(effects)
+        if len(effects) == 0:
+            collect.append(env_ci.action_dict[key]["action_grounded"])
+
