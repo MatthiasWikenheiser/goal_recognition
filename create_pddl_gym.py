@@ -298,18 +298,14 @@ def _recursive_effect_check(parse_string, zipped_parameters, start_fluents,
                 return True, [parse_string] + effects
 
 
-
-
-
-
-
-
-
-
-
-
-
 class GymCreator:
+    """Class that transforms a pddl domain and problem file to an OpenAI Gym instance.
+        The specified reward_functions is always interpreted as costs and therefore has a negative reward effect.
+        The name of the reward_function can be changed or set to None, then every action that does not achieve the goal
+        has a cost of -1.
+    """
+
+
     def __init__(self, domain, problem, constant_predicates=None, reward_function="costs"):
         self.domain = domain
         self.problem = problem
@@ -665,7 +661,16 @@ class PDDLENV(Env):
         self.start_fluents = {self._start_fluents()}
         {self._str_observation_space()}
         _ = self.reset()
-"""
+        self.state = self._get_obs_vector()"""
+        if self.rwrd_func is None:
+            str_class+="""
+        self.rwrd_func is None
+        
+        """
+        else:
+            str_class += f"""
+        self.rwrd_func = '{self.rwrd_func}'
+        """
         return str_class
 
     def make_env(self):
@@ -731,6 +736,57 @@ class PDDLENV(Env):
         zipped_parameters = list(zip(action["instances"], action["parameter_variable"]))
         _, effects = _recursive_effect_check(action_effects, zipped_parameters, fluents)
         return [_clean_literal(effect) for effect in effects if effect != "_"]
+    
+    def step(self, action):
+        old_fluents = self.get_current_fluents()
+        done = False
+        if self._action_possible(action):
+            effects = self._action_effects(action)
+            for effect in effects:
+                # numeric effects
+                if "(increase(" in effect or "(decrease(" in effect:
+                    change_value_str = re.findall(r'\d.*\d*', effect)[0].replace("(","").replace(")","")
+                    change_value_fl = float(change_value_str)
+                    func = effect.replace(change_value_str,"").replace("(increase(","").replace("(decrease(","").replace(")","")
+                    # rwrd_func? 
+                    if self.rwrd_func is None:
+                        reward = -1
+                    else: 
+                        if func == self.rwrd_func:
+                            reward = -abs(change_value_fl)
+                        elif "(increase(" in effect:
+                            self.observation_dict[func]["value"] += change_value_fl
+                        else:
+                            self.observation_dict[func]["value"] -= change_value_fl
+                # predicate effect
+                elif "(not(" in effect: 
+                    effect = effect.replace("(not(","").replace(")","")
+                    self.observation_dict[effect]["value"] = 0
+                else:
+                    effect = effect.replace("(","").replace(")","")
+                    self.observation_dict[effect]["value"] = 1
+        else:
+            reward = -1000
+            done = False
+
+        new_fluents = self.get_current_fluents()
+        
+        info = "deleted: "
+        for el in old_fluents:
+            if el not in new_fluents:
+                info += el+ " "
+        info += ", added: "
+        for el in new_fluents:
+            if el not in old_fluents:
+                info += el+ " "
+
+        self.state = self._get_obs_vector()
+
+        return self.state, reward, done, info
+
+        
+
+
 
 """
         py_file = self.py_path + "env_pddl.py"
@@ -744,7 +800,7 @@ class PDDLENV(Env):
 
 
 if __name__ == '__main__':
-    model = 12
+    model = 11
     if model> 8:
         cp = ["person_in_room", "neighboring"]
     else:
@@ -758,13 +814,23 @@ if __name__ == '__main__':
     env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
     env_toy = env_creator_toy.make_env()
     #d = env_ci.get_all_possible_actions()
-    #print(env_ci.action_dict[480])
+    print([key for key in env_ci.action_dict.keys()
+           if env_ci.action_dict[key]["action_grounded"] == "ACTION-MOVETOLOC_LOC-STARTGAME_LOC-OUTDOORS-6B"])
+    #print([key for key in env_ci.action_dict.keys()
+           #if env_ci.action_dict[key]["action_grounded"] == "ACTION-QUIZ"])
+
+
+
     #print(env_ci._action_possible(480))
-    collect = []
-    for key in range(len(env_ci.action_dict.keys())):
-        effects = env_ci._action_effects(key)
-        print(env_ci.action_dict[key]["action_grounded"])
-        print(effects)
-        if len(effects) == 0:
-            collect.append(env_ci.action_dict[key]["action_grounded"])
+    #collect = []
+    #for key in range(len(env_ci.action_dict.keys())):
+        #effects = env_ci._action_effects(key)
+        #print(env_ci.action_dict[key]["action_grounded"])
+        #print(effects)
+        #if len(effects) == 0:
+            #collect.append(env_ci.action_dict[key]["action_grounded"])
+    print(env_ci.step(3264))
+    print(env_ci.step(1))
+
+
 
