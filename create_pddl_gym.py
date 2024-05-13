@@ -4,6 +4,80 @@ import gym
 import sys
 from itertools import product
 
+def _recursive_goal_check(goal_string, fluents, start_point = False):
+    string_cleaned_blanks = goal_string.replace("\t", "").replace(" ", "").replace("\n", "")
+    if start_point:
+        fluents = [_clean_literal(fl) for fl in fluents]
+    if string_cleaned_blanks.startswith("(and"):
+        key_word = "and"
+    elif string_cleaned_blanks.startswith("(or"):
+        key_word = "or"
+    else:
+        key_word = None
+    if key_word in ["and", "or"]:
+        is_true_list = []
+        split_list = _split_recursive_and_or(goal_string, key_word)
+        for split_element in split_list:
+            is_true = _recursive_goal_check(split_element, fluents)
+            is_true_list.append(is_true)
+        if key_word == "and":
+            if all(is_true_list):
+                return True
+            else:
+                return False
+        elif key_word == "or":
+            if any(is_true_list):
+                return True
+            else:
+                return False
+    if key_word is None:
+        goal_string = _clean_literal(goal_string)
+        if "(not(" in goal_string:
+            check_str = goal_string.replace("(not", "")[:-1]
+            if check_str in fluents:
+                return False
+            else:
+                return True
+        elif "(=(" in goal_string or "(>(" in goal_string or "(<(" in goal_string:
+            if "(=(" in goal_string:
+                op = 0
+                operator_string = "(=("
+            elif "(>(" in goal_string:
+                op = 1
+                operator_string = "(>("
+            elif "(<(" in goal_string:
+                op = -1
+                operator_string = "(<("
+            func = goal_string.replace(operator_string,"")
+            func = "("+func[:func.find(")")]+")"
+            goal_value_str = re.findall(r'\d.*\d*', goal_string)[0].replace("(", "").replace(")", "")
+            goal_value_fl = float(goal_value_str)
+            current_value_str = [f for f in fluents if func in f][0]
+            current_value_str = re.findall(r'\d.*\d*', current_value_str)[0].replace("(", "").replace(")", "")
+            current_value = float(current_value_str)
+
+            if op == 0:
+                if current_value == goal_value_fl:
+                    return True
+                else:
+                    return False
+            if op == 1:
+                if current_value > goal_value_fl:
+                    return True
+                else:
+                    return False
+            if op == -1:
+                if current_value < goal_value_fl:
+                    return True
+                else:
+                    return False
+        else:
+            if goal_string in fluents:
+                return True
+            else:
+                return False
+
+
 
 def _clean_literal(literal):
     left_bracket_clean = re.sub("\s*\(\s*", "(", literal)
@@ -439,7 +513,7 @@ except:
 from gym import Env
 from gym.spaces import Discrete, MultiBinary, Box, Tuple
 sys.path.append(r'E:/goal_recognition/create_pddl_gym.py')
-from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition, _recursive_effect_check
+from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition, _recursive_effect_check, _recursive_goal_check
             
         
         """
@@ -659,6 +733,7 @@ class PDDLENV(Env):
         self.action_dict= {self.action_params}
         self.ungrounded_actions = {self._ungrounded_actions()}
         self.start_fluents = {self._start_fluents()}
+        self.goal_fluents = '{self.problem.goal_fluents[0]}'
         {self._str_observation_space()}
         _ = self.reset()
         self.state = self._get_obs_vector()"""
@@ -737,9 +812,11 @@ class PDDLENV(Env):
         _, effects = _recursive_effect_check(action_effects, zipped_parameters, fluents)
         return [_clean_literal(effect) for effect in effects if effect != "_"]
     
+    def render(self):
+        pass
+    
     def step(self, action):
         old_fluents = self.get_current_fluents()
-        done = False
         if self._action_possible(action):
             effects = self._action_effects(action)
             for effect in effects:
@@ -767,11 +844,12 @@ class PDDLENV(Env):
                     self.observation_dict[effect]["value"] = 1
         else:
             reward = -1000
-            done = False
 
         new_fluents = self.get_current_fluents()
-        
-        info = "deleted: "
+        done = _recursive_goal_check(self.goal_fluents, new_fluents, start_point = True)
+
+        info = "action: " + self.action_dict[action]['action_grounded']
+        info += ", deleted: "
         for el in old_fluents:
             if el not in new_fluents:
                 info += el+ " "
@@ -781,7 +859,6 @@ class PDDLENV(Env):
                 info += el+ " "
 
         self.state = self._get_obs_vector()
-
         return self.state, reward, done, info
 
         
@@ -800,7 +877,7 @@ class PDDLENV(Env):
 
 
 if __name__ == '__main__':
-    model = 11
+    model = 7
     if model> 8:
         cp = ["person_in_room", "neighboring"]
     else:
@@ -811,13 +888,19 @@ if __name__ == '__main__':
     env_creator_ci = GymCreator(domain, problem, constant_predicates= cp)
     env_ci = env_creator_ci.make_env()
 
-    env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
-    env_toy = env_creator_toy.make_env()
+    # env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
+    # env_toy = env_creator_toy.make_env()
     #d = env_ci.get_all_possible_actions()
-    print([key for key in env_ci.action_dict.keys()
-           if env_ci.action_dict[key]["action_grounded"] == "ACTION-MOVETOLOC_LOC-STARTGAME_LOC-OUTDOORS-6B"])
-    #print([key for key in env_ci.action_dict.keys()
-           #if env_ci.action_dict[key]["action_grounded"] == "ACTION-QUIZ"])
+    steps = ["ACTION-MOVETOLOC-STARTGAME-OUTDOORS_6B", "ACTION-MOVETOLOC-OUTDOORS_6B-OUTDOORS_5B",
+             "ACTION-MOVETOLOC-OUTDOORS_5B-OUTDOORS_4B", "ACTION-MOVETOLOC-OUTDOORS_4B-INFIRMARY_KIM",
+             "ACTION-TALK-TO_TERESA_LOC-INFIRMARY-KIM"]
+    st = []
+    for step in steps:
+        st.append([(key, env_ci.action_dict[key]["action_grounded"]) for key in env_ci.action_dict.keys()
+               if step in env_ci.action_dict[key]["action_grounded"]][0])
+    print(st)
+    #print([(key, env_ci.action_dict[key]["action_grounded"]) for key in env_ci.action_dict.keys()
+           #if "TALK" in  env_ci.action_dict[key]["action_grounded"]])
 
 
 
@@ -829,8 +912,28 @@ if __name__ == '__main__':
         #print(effects)
         #if len(effects) == 0:
             #collect.append(env_ci.action_dict[key]["action_grounded"])
+    print("---------")
+    print(env_ci.step(3265))
     print(env_ci.step(3264))
+    print("---------")
+    print(env_ci.step(3266))
     print(env_ci.step(1))
+    print("---------")
+    print(env_ci.step(3275))
+    print(env_ci.step(17))
+    print("---------")
+    print(env_ci.step(3285))
+    print(env_ci.step(3236))
+    print("---------")
+    print(env_ci.step(3285))
+    print(env_ci.step(1781))
+    print("---------")
+    print(env_ci.step(3248))
+    print(env_ci.step(3250))
+    print(env_ci.step(3247))
 
 
+    #c = _recursive_goal_check(env_ci.goal_fluents, env_ci.get_current_fluents(), start_point = True)
+    # print("c: ", c)
+    #_recursive_goal_check(goal_string, fluents, inside_when, start_point=False, key_word=None)
 
