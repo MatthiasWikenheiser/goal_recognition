@@ -380,13 +380,14 @@ class GymCreator:
     """
 
 
-    def __init__(self, domain, problem, constant_predicates=None, reward_function="costs"):
+    def __init__(self, domain, problem, constant_predicates=None, reward_function="costs", add_actions = None):
         self.domain = domain
         self.problem = problem
         self.env_name = self.domain.name
         self.py_path = self._create_py_path()
         self.constant_predicates = constant_predicates if constant_predicates is not None else []
         self.rwrd_func = reward_function
+        self.add_actions = add_actions
         self.obs_space = self._create_obs_space()
         self.action_params = self._create_action_space()
         self.start_fluents = self._start_fluents()
@@ -716,6 +717,28 @@ from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_
                         actions_dict_params["effects"] = \
                             self.domain.action_dict[action].action_effects
                         action_params.append(actions_dict_params)
+        if not self.add_actions is None:
+            for action in self.add_actions:
+                actions_dict_params = {}
+                action_grounded = action["action_ungrounded"].upper()
+                action_ungrounded = action["action_ungrounded"].upper()
+                for instance in action["instances"]:
+                    action_grounded+= f"_{instance.upper()}"
+                actions_dict_params["action_grounded"] = action_grounded
+                actions_dict_params["action_ungrounded"] = action_ungrounded
+                param_list = [p.parameter_type for p
+                              in self.domain.action_dict[action_ungrounded].action_parameters]
+                actions_dict_params["parameter"] = param_list
+                param_variables = [p.parameter for p
+                              in self.domain.action_dict[action_ungrounded].action_parameters]
+                actions_dict_params["parameter_variable"] = param_variables
+                actions_dict_params["instances"] = action["instances"]
+                actions_dict_params["precondition"] = \
+                    self.domain.action_dict[action_ungrounded].action_preconditions
+                actions_dict_params["effects"] = \
+                    self.domain.action_dict[action_ungrounded].action_effects
+                action_params.append(actions_dict_params)
+
         action_dict = {}
         i = 0
         for action in action_params:
@@ -847,7 +870,9 @@ class PDDLENV(Env):
 
         new_fluents = self.get_current_fluents()
         done = _recursive_goal_check(self.goal_fluents, new_fluents, start_point = True)
-
+        if done:
+            reward += 1000   
+        
         info = "action: " + self.action_dict[action]['action_grounded']
         info += ", deleted: "
         for el in old_fluents:
@@ -860,9 +885,6 @@ class PDDLENV(Env):
 
         self.state = self._get_obs_vector()
         return self.state, reward, done, info
-
-        
-
 
 
 """
@@ -877,30 +899,52 @@ class PDDLENV(Env):
 
 
 if __name__ == '__main__':
-    model = 7
+    model = 11
     if model> 8:
+        add_actions = [{'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-4b', 'loc-infirmary-kim']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-kim', 'loc-outdoors-4b']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-medicine', 'loc-infirmary-bathroom']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-bathroom', 'loc-infirmary-medicine']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-laboratory-front', 'loc-outdoors-null-b']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-b', 'loc-laboratory-front']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-laboratory-midright', 'loc-laboratory-library']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-laboratory-library', 'loc-laboratory-midright']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-dininghall-front', 'loc-outdoors-null-e']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-e', 'loc-dininghall-front']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-null-d']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-d', 'loc-dininghall-back-souptable']},
+
+
+                        ]
         cp = ["person_in_room", "neighboring"]
     else:
+        add_actions = None
         cp = ["person_in_room"]
     path = f"C:/Users/Matthias/OneDrive/goal_recognition/Domain and Logs/model_{model}/"
     domain = pddl_domain(path + f"{model}_crystal_island_domain.pddl")
     problem = pddl_problem(path + f"model_{model}_goal_1_crystal_island_problem.pddl")
-    env_creator_ci = GymCreator(domain, problem, constant_predicates= cp)
+    env_creator_ci = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions)
     env_ci = env_creator_ci.make_env()
 
-    # env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
-    # env_toy = env_creator_toy.make_env()
+    #z = [env_creator_ci.action_params[key] for key in env_creator_ci.action_params.keys() if "MOVE" in env_creator_ci.action_params[key]["action_grounded"]]
+
+    env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
+    env_toy = env_creator_toy.make_env()
     #d = env_ci.get_all_possible_actions()
-    steps = ["ACTION-MOVETOLOC-STARTGAME-OUTDOORS_6B", "ACTION-MOVETOLOC-OUTDOORS_6B-OUTDOORS_5B",
-             "ACTION-MOVETOLOC-OUTDOORS_5B-OUTDOORS_4B", "ACTION-MOVETOLOC-OUTDOORS_4B-INFIRMARY_KIM",
-             "ACTION-TALK-TO_TERESA_LOC-INFIRMARY-KIM"]
+    #steps = ["ACTION-MOVETOLOC-STARTGAME-OUTDOORS_6B", "ACTION-MOVETOLOC-OUTDOORS_6B-OUTDOORS_5B",
+             #"ACTION-MOVETOLOC-OUTDOORS_5B-OUTDOORS_4B", "ACTION-MOVETOLOC-OUTDOORS_4B-INFIRMARY_KIM",
+             #"ACTION-TALK-TO_TERESA_LOC-INFIRMARY-KIM"]
+    steps = ["ACTION-MOVETOLOC_LOC-STARTGAME_LOC-OUTDOORS-6B", "ACTION-MOVETOLOC_LOC-OUTDOORS-6B_LOC-OUTDOORS-5B",
+    "ACTION-MOVETOLOC_LOC-OUTDOORS-5B_LOC-OUTDOORS-4B", "ACTION-OPEN_DOOR-INFIRMARY-FRONT",
+             "ACTION-MOVETOLOC_LOC-OUTDOORS-4B_LOC-INFIRMARY-KIM", "ACTION-TALK-TO_TERESA_LOC-INFIRMARY-KIM",
+             "ACTION-TALK-TO_KIM_LOC-INFIRMARY-KIM"]
     st = []
     for step in steps:
         st.append([(key, env_ci.action_dict[key]["action_grounded"]) for key in env_ci.action_dict.keys()
                if step in env_ci.action_dict[key]["action_grounded"]][0])
     print(st)
     #print([(key, env_ci.action_dict[key]["action_grounded"]) for key in env_ci.action_dict.keys()
-           #if "TALK" in  env_ci.action_dict[key]["action_grounded"]])
+     #      if "OPEN" in  env_ci.action_dict[key]["action_grounded"]])
 
 
 
@@ -916,19 +960,18 @@ if __name__ == '__main__':
     print(env_ci.step(3265))
     print(env_ci.step(3264))
     print("---------")
-    print(env_ci.step(3266))
-    print(env_ci.step(1))
+    print(env_ci.step(4))
+    print(env_ci.step(3265))
     print("---------")
-    print(env_ci.step(3275))
+    print(env_ci.step(3272))
     print(env_ci.step(17))
     print("---------")
-    print(env_ci.step(3285))
+    print(env_ci.step(3327))
     print(env_ci.step(3236))
     print("---------")
-    print(env_ci.step(3285))
+    print(env_ci.step(3327))
     print(env_ci.step(1781))
     print("---------")
-    print(env_ci.step(3248))
     print(env_ci.step(3250))
     print(env_ci.step(3247))
 
@@ -936,4 +979,5 @@ if __name__ == '__main__':
     #c = _recursive_goal_check(env_ci.goal_fluents, env_ci.get_current_fluents(), start_point = True)
     # print("c: ", c)
     #_recursive_goal_check(goal_string, fluents, inside_when, start_point=False, key_word=None)
+
 
