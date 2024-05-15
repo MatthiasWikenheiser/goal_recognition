@@ -913,9 +913,16 @@ if __name__ == '__main__':
                        {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-e', 'loc-dininghall-front']},
                        {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-null-d']},
                        {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-d', 'loc-dininghall-back-souptable']},
-
-
-                        ]
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-2b']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-2b', 'loc-dininghall-back-souptable']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-livingquarters-hall', 'loc-outdoors-2a']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-2a', 'loc-livingquarters-hall']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-livingquarters-hall', 'loc-outdoors-null-g']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-g', 'loc-livingquarters-hall']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-brycesquarters-hall', 'loc-outdoors-null-f']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-null-f', 'loc-brycesquarters-hall']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-brycesquarters-hall', 'loc-brycesquarters-bedroom']},
+                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-brycesquarters-bedroom', 'loc-brycesquarters-hall']}]
         cp = ["person_in_room", "neighboring"]
     else:
         add_actions = None
