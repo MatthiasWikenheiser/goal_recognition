@@ -794,7 +794,6 @@ class PDDLENV(Env):
                 self.observation_dict[key]["value"] = self.start_fluents[key]
             self.state = self._get_obs_vector()
         else:
-            print("under construction")
             self.state = state
             self._set_observation_dict(state)
         return self.state
