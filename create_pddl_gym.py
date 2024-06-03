@@ -3,6 +3,8 @@ import os
 import gym
 import sys
 from itertools import product
+import time
+
 
 def _recursive_goal_check(goal_string, fluents, start_point = False):
     string_cleaned_blanks = goal_string.replace("\t", "").replace(" ", "").replace("\n", "")
@@ -510,12 +512,19 @@ try:
 except:
     install('numpy')
     import numpy as np
+try: 
+    from multiprocessing import Pool
+except:
+    install("multiprocessing")
+    multiprocessing
 
+
+import os
 from gym import Env
 from gym.spaces import Discrete, MultiBinary, Box, Tuple
 sys.path.append(r'E:/goal_recognition/create_pddl_gym.py')
 from create_pddl_gym import _clean_literal, _split_recursive_and_or, _recursive_check_precondition, _recursive_effect_check, _recursive_goal_check
-            
+from all_actions_mp import get_all_possible_actions          
         
         """
         return str_imports
@@ -759,7 +768,7 @@ class PDDLENV(Env):
         self.goal_fluents = '{self.problem.goal_fluents[0]}'
         {self._str_observation_space()}
         _ = self.reset()
-        self.state = self._get_obs_vector()"""
+        """
         if self.rwrd_func is None:
             str_class+="""
         self.rwrd_func is None
@@ -777,19 +786,34 @@ class PDDLENV(Env):
 {self._str_env_class()}
 """
         py_code += f"""
-    def reset(self):
-        for key in self.start_fluents.keys():
-            self.observation_dict[key]["value"] = self.start_fluents[key]
-        return self._get_obs_vector()
+    def reset(self, startpoint=True, state=None):
+        if startpoint:
+            for key in self.observation_dict.keys():
+                self.observation_dict[key]["value"] = 0
+            for key in self.start_fluents.keys():
+                self.observation_dict[key]["value"] = self.start_fluents[key]
+            self.state = self._get_obs_vector()
+        else:
+            print("under construction")
+            self.state = state
+            self._set_observation_dict(state)
+        return self.state
 
     def _get_obs_vector(self):
         i = 0
-        vetor_list = []
+        vector_list = []
         while i < len(self.observation_dict_key.keys()):
             key = self.observation_dict_key[i]
-            vetor_list.append(self.observation_dict[key]["value"])
+            vector_list.append(self.observation_dict[key]["value"])
             i+=1
-        return np.array(vetor_list)
+        return np.array(vector_list)
+
+    def _set_observation_dict(self, array_state):
+        i = 0
+        while i < len(self.observation_dict_key.keys()):
+            key = self.observation_dict_key[i]
+            self.observation_dict[key]["value"] = array_state[i]
+            i+=1
 
     def get_current_fluents(self):
         current_fluents = []
@@ -820,12 +844,16 @@ class PDDLENV(Env):
         precondition_given = _recursive_check_precondition(precondition, fluents, start_point=True)
         return precondition_given
     
-    def get_all_possible_actions(self):
-        list_actions = []
-        for idx in range(len(self.action_dict.keys())):
-            if self._action_possible(idx):
-                list_actions.append(self.action_dict[idx]["action_grounded"])
-        return list_actions
+    def get_all_possible_actions(self, multiprocess = False, workers = 3):
+        if not multiprocess:
+            list_actions = []
+            for idx in range(len(self.action_dict.keys())):
+                if self._action_possible(idx):
+                    list_actions.append((idx, self.action_dict[idx]["action_grounded"]))
+            return list_actions
+        else:
+            return get_all_possible_actions(self.action_dict, self.get_current_fluents(), workers=workers)
+
 
     def _action_effects(self, action_idx):
         action = self.action_dict[action_idx]
@@ -871,7 +899,7 @@ class PDDLENV(Env):
         new_fluents = self.get_current_fluents()
         done = _recursive_goal_check(self.goal_fluents, new_fluents, start_point = True)
         if done:
-            reward += 1000   
+            reward += 100   
         
         info = "action: " + self.action_dict[action]['action_grounded']
         info += ", deleted: "
@@ -884,6 +912,7 @@ class PDDLENV(Env):
                 info += el+ " "
 
         self.state = self._get_obs_vector()
+        info = dict()
         return self.state, reward, done, info
 
 
@@ -937,7 +966,7 @@ if __name__ == '__main__':
 
     env_creator_toy = GymCreator(pddl_domain("domain.pddl"), pddl_problem("problem_B.pddl"))
     env_toy = env_creator_toy.make_env()
-    #d = env_ci.get_all_possible_actions()
+    d = env_ci.get_all_possible_actions()
     #steps = ["ACTION-MOVETOLOC-STARTGAME-OUTDOORS_6B", "ACTION-MOVETOLOC-OUTDOORS_6B-OUTDOORS_5B",
              #"ACTION-MOVETOLOC-OUTDOORS_5B-OUTDOORS_4B", "ACTION-MOVETOLOC-OUTDOORS_4B-INFIRMARY_KIM",
              #"ACTION-TALK-TO_TERESA_LOC-INFIRMARY-KIM"]
@@ -982,9 +1011,19 @@ if __name__ == '__main__':
     print(env_ci.step(3250))
     print(env_ci.step(3247))
 
-
+    len(env_ci.action_dict)
     #c = _recursive_goal_check(env_ci.goal_fluents, env_ci.get_current_fluents(), start_point = True)
     # print("c: ", c)
     #_recursive_goal_check(goal_string, fluents, inside_when, start_point=False, key_word=None)
+    env_ci.get_current_fluents()
+    env_ci.reset()
+
+    start = time.time()
+    env_ci.get_all_possible_actions()
+    print(time.time() - start)
+    start = time.time()
+    env_ci.get_all_possible_actions(multiprocess=True)
+    print(time.time() - start)
+
 
 
