@@ -382,7 +382,8 @@ class GymCreator:
     """
 
 
-    def __init__(self, domain, problem, constant_predicates=None, reward_function="costs", add_actions = None):
+    def __init__(self, domain, problem, constant_predicates=None, reward_function="costs", add_actions = None,
+                 negative_booleans_coding=0):
         self.domain = domain
         self.problem = problem
         self.env_name = self.domain.name
@@ -393,6 +394,7 @@ class GymCreator:
         self.obs_space = self._create_obs_space()
         self.action_params = self._create_action_space()
         self.start_fluents = self._start_fluents()
+        self.neg_bool_code = negative_booleans_coding
 
     def _create_obs_space(self):
         obs_space = {}
@@ -543,7 +545,7 @@ from all_actions_mp import get_all_possible_actions
             for el in self.obs_space["booleans"]:
                 obs_el = {}
                 obs_el["type"] = "boolean"
-                obs_el["value"] = 0
+                obs_el["value"] = self.neg_bool_code
                 obs_dict[el] = obs_el
         if len(self.obs_space["numeric"]) > 0:
             for el in self.obs_space["numeric"]:
@@ -789,7 +791,7 @@ class PDDLENV(Env):
     def reset(self, startpoint=True, state=None):
         if startpoint:
             for key in self.observation_dict.keys():
-                self.observation_dict[key]["value"] = 0
+                self.observation_dict[key]["value"] = {self.neg_bool_code}
             for key in self.start_fluents.keys():
                 self.observation_dict[key]["value"] = self.start_fluents[key]
             self.state = self._get_obs_vector()
@@ -888,17 +890,17 @@ class PDDLENV(Env):
                 # predicate effect
                 elif "(not(" in effect: 
                     effect = effect.replace("(not(","").replace(")","")
-                    self.observation_dict[effect]["value"] = 0
+                    self.observation_dict[effect]["value"] = {self.neg_bool_code}
                 else:
                     effect = effect.replace("(","").replace(")","")
                     self.observation_dict[effect]["value"] = 1
         else:
-            reward = -1000
+            reward = -10
 
         new_fluents = self.get_current_fluents()
         done = _recursive_goal_check(self.goal_fluents, new_fluents, start_point = True)
         if done:
-            reward += 100   
+            reward += 10  
         
         info = "action: " + self.action_dict[action]['action_grounded']
         info += ", deleted: "
@@ -958,7 +960,8 @@ if __name__ == '__main__':
     path = f"C:/Users/Matthias/OneDrive/goal_recognition/Domain and Logs/model_{model}/"
     domain = pddl_domain(path + f"{model}_crystal_island_domain.pddl")
     problem = pddl_problem(path + f"model_{model}_goal_1_crystal_island_problem.pddl")
-    env_creator_ci = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions)
+    env_creator_ci = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions,
+                                negative_booleans_coding=-1)
     env_ci = env_creator_ci.make_env()
 
     #z = [env_creator_ci.action_params[key] for key in env_creator_ci.action_params.keys() if "MOVE" in env_creator_ci.action_params[key]["action_grounded"]]
