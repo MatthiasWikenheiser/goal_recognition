@@ -1,5 +1,6 @@
 import sqlite3 as db
 import pandas as pd
+import numpy as np
 
 db_path = "/home/mwiubuntu/Seminararbeit/db_results/goal_recognition.db"
 
@@ -60,17 +61,28 @@ def accuracy(model_type, hash_code_model, hash_code_action, rl_type=0, iteration
     else:
         query += f"\n\t\t\t\t\t AND iterations = {iterations}"
 
-    if not station is None:
-        query += f"\n\t\t\t\t\t AND station = '{station}'"
-
-    if not log_file is None:
-        query += f"\n\t\t\t\t\t AND log_file = '{log_file}'"
-    #print(query)
-
-    db_gr = db.connect(db_path)
-    df = pd.read_sql_query(query, db_gr)
-    db_gr.close()
-    return df["correct_prediction"].mean()
+    if not station is None or not log_file is None:
+        if len(station) != len(log_file):
+            print("ERROR: station and log_files of different length")
+            return None
+        else:
+            query += f"\n\t\t\t\t\t AND ("
+            i=0
+            while i < len(station):
+                if i != 0:
+                    query += f"\n\t\t\t\t\t\t OR"
+                query += f" (station = '{station[i]}' AND log_file = '{log_file[i]}')"
+                i+=1
+        query += f"\n\t\t\t\t\t )"
+        db_gr = db.connect(db_path)
+        df = pd.read_sql_query(query, db_gr)
+        db_gr.close()
+        return df["correct_prediction"].mean()
+    else:
+        db_gr = db.connect(db_path)
+        df = pd.read_sql_query(query, db_gr)
+        db_gr.close()
+        return df["correct_prediction"].mean()
 
 def collect_accuracy():
     """under construction"""
@@ -159,6 +171,40 @@ def collect_convergence_rate():
     results = results.reset_index().iloc[:, 1:]
     return results
 
+def cross_validation(model_type, hash_code_model, hash_code_action, rl_type = 0, iterations = None,
+                     k=5, multiclass=True):
+    query = f"""SELECT station, log_file 
+                FROM model_grid_observed 
+                WHERE model_type = '{model_type}'
+                    AND hash_code_model = '{hash_code_model}'
+                    AND hash_code_action = '{hash_code_action}'
+                    AND observed_action_no = 1"""
+    db_gr = db.connect(db_path)
+    station_files = pd.read_sql_query(query, db_gr)
+    db_gr.close()
+    split_size = (1/k)*len(station_files)
+    if split_size % 1 != 0:
+        split_size = int(split_size) + 1
+    i = 0
+    acc_list = []
+    while i < k:
+        left_bound = i*split_size
+        if i == k-1:
+            split_df = station_files.iloc[left_bound:]
+        else:
+            right_bound = (i+1) * split_size
+            split_df =station_files.iloc[left_bound:right_bound]
+        stations = list(split_df["station"])
+        log_files = list(split_df["log_file"])
+        acc_list.append(accuracy(model_type=model_type, hash_code_model=hash_code_model,
+                 hash_code_action=hash_code_action, rl_type=rl_type, iterations=iterations,
+                 station=stations, log_file=log_files, multiclass=multiclass))
+        i+=1
+    return acc_list, np.mean(acc_list)
+
+
+
+
 def collect_convergence_point(exclude_null_predictions=True):
     """under construction"""
     results = pd.DataFrame()
@@ -234,45 +280,17 @@ def convergence_point(model_type, hash_code_model, hash_code_action, rl_type=0, 
 
 
 if __name__ == '__main__':
-    #model_type = "prap_model"
-    #hash_code_model = '52f3fe1ade9258da2452dcadb3c9c8836828d95be112a31f36f38f3c'
-    #hash_code_action = '222b41d94ac651c514738913617e0f3fcc8f57ebf623546630e8540b'
-    #station = None#'Session1-StationC'
-    #log_file = None#'1_log_Salmonellosis.csv'
-    #print(accuracy(model_type, hash_code_model, hash_code_action, multiclass=True, station=station, log_file=log_file))
-    print("accuracy_collect")
-    accuracy_collect = collect_accuracy()
-    accuracy_collect.sort_values("accuracy", ascending= False, inplace = True)
-    accuracy_collect = accuracy_collect.reset_index().iloc[:, 1:]
-    #print(convergence_rate(model_type="gm_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
-                     #station=station, log_file=log_file))
-    #print(convergence_rate(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
-                        #station=station, log_file=log_file))
-    #convergence_rate_df = _convergence_rate_df(model_type="prap_model", hash_code_model=hash_code_model, hash_code_action=hash_code_action,
-                     #station=station, log_file=log_file, rl_type=0, iterations = None)
-    print("convergence_rate_collect")
-    convergence_rate_collect = collect_convergence_rate()
-    convergence_rate_collect.sort_values("convergence_rate", ascending=False, inplace=True)
-    convergence_rate_collect = convergence_rate_collect.reset_index().iloc[:,1:]
-
-    #cp = convergence_point(model_type=model_type, hash_code_model=hash_code_model,
-                           #hash_code_action=hash_code_action, station=station, log_file=log_file,
-                           #exclude_null_predictions=False)
-    print("exclude_true")
-    cp_collect_exclude_true = collect_convergence_point(exclude_null_predictions=True)
-    cp_collect_exclude_true.sort_values("convergence_point", ascending=True, inplace=True)
-    cp_collect_exclude_true = cp_collect_exclude_true.reset_index().iloc[:, 1:]
-    print("exclude_false")
-    cp_collect_exclude_false = collect_convergence_point(exclude_null_predictions=False)
-    cp_collect_exclude_false.sort_values("convergence_point", ascending=True, inplace=True)
-    cp_collect_exclude_false = cp_collect_exclude_false.reset_index().iloc[:, 1:]
+    model_7_hash = '0af2422953491e235481a3b7e0a10b74afc640356989b94d627359d1'
+    model_configs = ['495afca3d199dd8d66b44b1c5e414f225a19d42c9a540eabdcfec02e',
+                     '756b69e2c687b5c94fd2f2bc8214c53545b743fb43b4a2b0db86637a',
+                     '9ba2b59e1b25711ae06d73ddd96bb4d642744cdb5bc0ac291131329f',
+                     'b9b27945d52fbb94efbd91229da494b052aaaf36cd0026c4daf9bbfd',
+                     'd333764c7affc1cf43dd03e9bfc62876569666fbdabfeb66cc4a1f09'
+                     ]
+    for model_config in model_configs:
+        print(model_config, cross_validation(model_type="gm_prap_model",
+                               hash_code_model=model_7_hash,
+                               hash_code_action=model_config))
 
 
-    results = accuracy_collect.merge(convergence_rate_collect, how = "outer",
-                                     on =['model_type', 'hash_code_model', 'model_name',
-                                          'hash_code_action'])
-    results = results.merge(cp_collect_exclude_true, how="outer",
-                                     on=['model_type', 'hash_code_model', 'model_name',
-                                         'hash_code_action'])
-    results.to_csv("/home/mwiubuntu/Seminararbeit/db_results/zwischenergebnisse.csv",index=False, sep=";")
 
