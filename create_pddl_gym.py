@@ -125,21 +125,35 @@ def _recursive_check_precondition(precondition, fluents,inside_when=False, start
     elif string_cleaned_blanks.startswith("(or"):
         key_word = "or"
     if key_word in ["and", "or"]:
-        is_true_list = []
+        # is_true_list = []
+
         split_list = _split_recursive_and_or(parse_string, key_word)
-        for split_element in split_list:
-            is_true = _recursive_check_precondition(split_element, fluents, inside_when=inside_when)
-            is_true_list.append(is_true)
+
         if key_word == "and":
-            if all(is_true_list):
-                return True
-            else:
-                return False
+            for split_element in split_list:
+                if not _recursive_check_precondition(split_element, fluents, inside_when=inside_when):
+                    return False
+            return True
+
         elif key_word == "or":
-            if any(is_true_list):
-                return True
-            else:
-                return False
+            for split_element in split_list:
+                if _recursive_check_precondition(split_element, fluents, inside_when=inside_when):
+                    return True
+            return False
+
+        # for split_element in split_list:
+        # is_true = _recursive_check_precondition(split_element, fluents, inside_when=inside_when)
+        # is_true_list.append(is_true)
+    #  if key_word == "and":
+    #  if all(is_true_list):
+    #  return True
+    # else:
+    # return False
+    # elif key_word == "or":
+    # if any(is_true_list):
+    # return True
+    # else:
+    # return False
     if key_word is None:
         parse_string = _clean_literal(parse_string)
         if "=" in parse_string and len(_clean_literal(parse_string).split(" ")) > 1:
@@ -768,6 +782,8 @@ class PDDLENV(Env):
         self.ungrounded_actions = {self._ungrounded_actions()}
         self.start_fluents = {self._start_fluents()}
         self.goal_fluents = '{self.problem.goal_fluents[0]}'
+        self.final_reward = 10
+        self.additional_reward_fluents = dict()
         {self._str_observation_space()}
         _ = self.reset()
         """
@@ -788,6 +804,12 @@ class PDDLENV(Env):
 {self._str_env_class()}
 """
         py_code += f"""
+    def set_final_reward(self, reward):
+        self.final_reward = reward
+    
+    def set_additional_reward_fluents(self, fluent, reward):
+        self.additional_reward_fluents[fluent] = reward
+    
     def reset(self, startpoint=True, state=None):
         if startpoint:
             for key in self.observation_dict.keys():
@@ -827,8 +849,6 @@ class PDDLENV(Env):
         for key in self.always_true:
             for el in self.always_true[key]:
                 current_fluents.append("(" + el +")")
-
-
         return current_fluents
     
     def _action_possible(self, action_idx):
@@ -898,9 +918,13 @@ class PDDLENV(Env):
             reward = -10
 
         new_fluents = self.get_current_fluents()
+        for new_fluent in new_fluents:
+            if new_fluent in self.additional_reward_fluents.keys() and new_fluent not in old_fluents:
+                reward += self.additional_reward_fluents[new_fluent] 
+        
         done = _recursive_goal_check(self.goal_fluents, new_fluents, start_point = True)
         if done:
-            reward += 10  
+            reward += self.final_reward  
         
         info = "action: " + self.action_dict[action]['action_grounded']
         info += ", deleted: "
@@ -957,7 +981,7 @@ if __name__ == '__main__':
     else:
         add_actions = None
         cp = ["person_in_room"]
-    path = f"C:/Users/Matthias/OneDrive/goal_recognition/Domain and Logs/model_{model}/"
+    path = f"/home/mwiubuntu/Seminararbeit/domain/environment in domain file/For Grid-Search/"
     domain = pddl_domain(path + f"{model}_crystal_island_domain.pddl")
     problem = pddl_problem(path + f"model_{model}_goal_1_crystal_island_problem.pddl")
     env_creator_ci = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions,
