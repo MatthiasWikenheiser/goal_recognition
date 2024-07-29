@@ -29,18 +29,41 @@ class RlPlanner:
         self.env.reset()
         self.plan = {}
 
+    @staticmethod
+    def _remove_circular_states_indices(states):
+        seen_states = {}
+        clean_indices = []
+
+        for index, state in enumerate(states):
+            if state in seen_states:
+                # If a circular state is detected, remove all elements up to the first occurrence of that state
+                first_occurrence = seen_states[state]
+                clean_indices = [i for i in clean_indices if i <= first_occurrence]
+                # Update seen_states to reflect only the remaining indices
+                seen_states = {states[i]: i for i in clean_indices}
+            # Append the current index and update seen_states
+            else:
+                clean_indices.append(index)
+                seen_states[state] = index
+
+        return clean_indices
+
     def solve(self, print_actions=True, timeout=10, redundant_actions=None):
         start_time = time.time()
         done = False
         state_collection = []
+        state_for_clean_collection = []
+        state_for_clean_dict = {}
+        state_for_clean_dict_key = 0
         old_state = self.env.state
         state_collection.append(old_state)
         first_step = True
         circular_states = []
-        plan_step = 0
+        plan = []
 
         while not done:
-            print("achieved_goals", [f"achieved_goal_{goal}" for goal in range(1,8)
+            if print_actions:
+                print("achieved_goals", [f"achieved_goal_{goal}" for goal in range(1,8)
                                      if self.env.observation_dict[f"achieved_goal_{goal}"]["value"]== 1])
             # check for timeouts on multiple spots to increase performance
             time_passed = time.time()-start_time
@@ -70,8 +93,11 @@ class RlPlanner:
                         action = possible_actions[np.argmax(q_values_possible_actions)]
                     else:
                         print("in circular state")
-                        self.plan[plan_step] = self.env.action_dict[action]["action_grounded"]
-                        plan_step += 1
+                        plan.append(self.env.action_dict[action]["action_grounded"])
+                        state_for_clean_collection.append([self.env.state, True])
+                        state_for_clean_dict[state_for_clean_dict_key] = self.env.state
+                        state_for_clean_dict_key += 1
+
                         # check if circular state is already listed
                         if not any([(self.env.state == circ[0]).all() for circ in circular_states]):
                             circular_states.append([self.env.state, -2])
@@ -79,37 +105,24 @@ class RlPlanner:
                         else:
                             # find the circular state
                             idx = np.argmax([1 if (self.env.state == circ[0]).all() else 0 for circ in circular_states])
-                            print("idx: ", idx)
                             circular_states[idx][1] += -1
                         # state has changed from state before, therefore predict new q-values
                         q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :])
                         q_values_possible_actions = [q_values[0][i] for i in possible_actions]
-                        # print("circular_states: ", circular_states)
-                        # print("circular_states[idx]: ", circular_states[idx])
-                        # print("possible_actions: ", possible_actions)
-                        # print("action_name: ", [self.env.action_dict[x]["action_grounded"] for x in possible_actions])
-                        # print("q_values_possible_actions: ", q_values_possible_actions)
-                        # print("np.argsort(q_values_possible_actions): ", np.argsort(q_values_possible_actions))
+
                         try:
                             # it might happen that there is only one possible action in this state
                             # therefore, try to find another path in the next state
                             action = possible_actions[np.argsort(q_values_possible_actions)[circular_states[idx][1]]]
-                            # print("np.argsort(q_values_possible_actions)[circular_states[idx][1]]: ",
-                                  # np.argsort(q_values_possible_actions)[circular_states[idx][1]])
                         except:
                             # go back to last idx, since no other possible action is available
                             circular_states[idx][1] += 1
                             action = possible_actions[np.argsort(q_values_possible_actions)[circular_states[idx][1]]]
-                            # print("np.argsort(q_values_possible_actions)[circular_states[idx][1]]: ",
-                                  # np.argsort(q_values_possible_actions)[circular_states[idx][1]])
-
-                        # print("action: ", (action,self.env.action_dict[action]["action_grounded"] ))
-
 
                 else:
                     if not first_step:
-                        self.plan[plan_step] = self.env.action_dict[action]["action_grounded"]
-                        plan_step += 1
+                        plan.append(self.env.action_dict[action]["action_grounded"])
+                        state_for_clean_collection.append([self.env.state, False])
                     q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :])
                     action = np.argmax(q_values)
                 first_step = False
@@ -125,9 +138,37 @@ class RlPlanner:
                 _, reward, done, _ = self.env.step(action)
 
         # also memorize last action that lead to done
-        self.plan[plan_step] = self.env.action_dict[action]["action_grounded"]
+        plan.append(self.env.action_dict[action]["action_grounded"])
+        state_for_clean_collection.append([self.env.state, False])
 
-        # last step: clean plan
+        if time_passed >= timeout:
+            self.plan = {}
+            print("timeout: ", round(time_passed, 2), "s")
+            return
+
+        # clean circular actions
+        states_dirty = []
+        if state_for_clean_dict_key > 0:
+            for state in state_for_clean_collection:
+                find_state_key = [key for key in state_for_clean_dict.keys() if (state_for_clean_dict[key] == state[0]).all()]
+                if state[1]:
+                    states_dirty.append(find_state_key[0])
+                else:
+                    if len(find_state_key) == 0:
+                        state_for_clean_dict[state_for_clean_dict_key] = state[0]
+                        states_dirty.append(state_for_clean_dict_key)
+                        state_for_clean_dict_key += 1
+                    else:
+                        states_dirty.append(find_state_key[0])
+
+            plan = [plan[idx] for idx in self._remove_circular_states_indices(states_dirty)]
+
+        if time_passed >= timeout:
+            self.plan = {}
+            print("timeout: ", round(time_passed, 2), "s")
+            return
+
+        # clean redundant_actions
         if not redundant_actions is None:
             clean_plan_step = 0
             clean_plan = {}
@@ -143,13 +184,12 @@ class RlPlanner:
             self.plan = {}
             return
 
+        self.plan = {key: value for key, value in zip(range(len(plan)), plan) }
         print("solved, ",  round(time.time() - start_time, 2), "s")
 
 
-
-
 if __name__ == '__main__':
-    goal = 2
+    goal = 1
     keep_goal_1_reward = False
     random_samples = 10
 
@@ -263,5 +303,4 @@ if __name__ == '__main__':
         print("start at : ", [x for x in rl_planner.env.get_current_fluents() if "(at " in x][0])
         rl_planner.solve(redundant_actions=redundant_actions)
         print(rl_planner.plan)
-
 
