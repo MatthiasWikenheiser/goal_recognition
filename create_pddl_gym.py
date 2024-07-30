@@ -1,3 +1,5 @@
+import re
+
 from pddl import *
 import os
 import gym
@@ -742,7 +744,7 @@ from all_actions_mp import get_all_possible_actions
                         actions_dict_params["effects"] = \
                             self.domain.action_dict[action].action_effects
                         action_params.append(actions_dict_params)
-        if not self.add_actions is None:
+        if self.add_actions is not None:
             for action in self.add_actions:
                 actions_dict_params = {}
                 action_grounded = action["action_ungrounded"].upper()
@@ -767,9 +769,16 @@ from all_actions_mp import get_all_possible_actions
         action_dict = {}
         i = 0
         for action in action_params:
+            if self.rwrd_func is not None:
+                rwrd_str = re.findall(f'\s*\(\s*increase\s*\(\s*{self.rwrd_func}\s*\)\s*\d*\.*\d*\s*\)',
+                                          action["effects"])[0]
+
+                change_value_str = re.findall(r'\d.*\d*', rwrd_str)[0].replace("(", "").replace(")", "")
+                change_value_fl = float(change_value_str)
+                action["reward"] = -abs(change_value_fl)
             action_dict[i] = action
             i += 1
-        action_dict
+
         return action_dict
 
     def _str_env_class(self):

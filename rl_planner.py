@@ -10,7 +10,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-
 def load_model(path):
     return tf.keras.models.load_model(path)
 
@@ -20,6 +19,8 @@ class RlPlanner:
         self.env = environment
         self.rl_model = rl_model
         self.plan = {}
+        self.plan_achieved = 0
+        self.plan_cost = 0
 
     def set_state(self, state):
         self.env.reset(startpoint=False, state=state)
@@ -87,13 +88,18 @@ class RlPlanner:
                         self.plan = {}
                         return
                     if (old_state == self.env.state).all():
-                        print("not possible action")
+                        print("not possible action") # can also be action that doesnt alter the state anymore
                         # maintain old q_values and filter for a new possible action
+                        old_action = action
                         q_values_possible_actions = [q_values[0][i] for i in possible_actions]
-                        action = possible_actions[np.argmax(q_values_possible_actions)]
+                        j = -1
+                        while old_action == action:
+                            action = possible_actions[np.argsort(q_values_possible_actions)[j]]
+                            j += -1
+
                     else:
                         print("in circular state")
-                        plan.append(self.env.action_dict[action]["action_grounded"])
+                        plan.append(action)
                         state_for_clean_collection.append([self.env.state, True])
                         state_for_clean_dict[state_for_clean_dict_key] = self.env.state
                         state_for_clean_dict_key += 1
@@ -121,7 +127,7 @@ class RlPlanner:
 
                 else:
                     if not first_step:
-                        plan.append(self.env.action_dict[action]["action_grounded"])
+                        plan.append(action)
                         state_for_clean_collection.append([self.env.state, False])
                     q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :])
                     action = np.argmax(q_values)
@@ -138,7 +144,7 @@ class RlPlanner:
                 _, reward, done, _ = self.env.step(action)
 
         # also memorize last action that lead to done
-        plan.append(self.env.action_dict[action]["action_grounded"])
+        plan.append(action)
         state_for_clean_collection.append([self.env.state, False])
 
         if time_passed >= timeout:
@@ -150,7 +156,8 @@ class RlPlanner:
         states_dirty = []
         if state_for_clean_dict_key > 0:
             for state in state_for_clean_collection:
-                find_state_key = [key for key in state_for_clean_dict.keys() if (state_for_clean_dict[key] == state[0]).all()]
+                find_state_key = [key for key in state_for_clean_dict.keys()
+                                  if (state_for_clean_dict[key] == state[0]).all()]
                 if state[1]:
                     states_dirty.append(find_state_key[0])
                 else:
@@ -169,7 +176,7 @@ class RlPlanner:
             return
 
         # clean redundant_actions
-        if not redundant_actions is None:
+        if redundant_actions is not None:
             clean_plan_step = 0
             clean_plan = {}
             # remove redundant actions
@@ -183,9 +190,17 @@ class RlPlanner:
             print("timeout: ", round(time_passed, 2), "s")
             self.plan = {}
             return
-
-        self.plan = {key: value for key, value in zip(range(len(plan)), plan) }
-        print("solved, ",  round(time.time() - start_time, 2), "s")
+        self.plan_action = plan
+        self.plan = {key: self.env.action_dict[value]['action_grounded'] for key, value in zip(range(len(plan)), plan)}
+        self.plan_achieved = 1
+        self.plan_cost = (sum([self.env.action_dict[p]['reward'] for p in self.plan_action])) * (-1)
+        time_passed = round(time.time() - start_time, 2)
+        if time_passed >= timeout:
+            print("timeout: ", round(time_passed, 2), "s")
+            self.plan = {}
+            return
+        self.time = time_passed
+        print("solved, ",  self.time, "s")
 
 
 if __name__ == '__main__':
@@ -266,7 +281,6 @@ if __name__ == '__main__':
     remove_goal = [key for key in env.observation_dict_key
                    if env.observation_dict_key[key] == f"achieved_goal_{goal}"][0]
 
-
     with gzip.open(path_rl_model + 'sample_set_code-1.pkl.gz') as file:
         samples = pickle.load(file)
     result_dict = {}
@@ -279,7 +293,7 @@ if __name__ == '__main__':
     # instantiate rl_planner
     rl_planner = RlPlanner(env, rl_model)
 
-    #solve samples
+    # solve samples
     redundant_actions = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
                          'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
                          'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
@@ -296,6 +310,7 @@ if __name__ == '__main__':
     print("start_game")
     rl_planner.solve()
     print(rl_planner.plan)
+    sample = samples[1]
 
     for sample in samples:
         print("------")
@@ -304,3 +319,4 @@ if __name__ == '__main__':
         rl_planner.solve(redundant_actions=redundant_actions)
         print(rl_planner.plan)
 
+    env.action_dict
