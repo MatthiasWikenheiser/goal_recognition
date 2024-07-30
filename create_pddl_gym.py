@@ -794,6 +794,7 @@ class PDDLENV(Env):
         self.final_reward = 10
         self.additional_reward_fluents = dict()
         {self._str_observation_space()}
+        self.problem_name = '{self.problem.name}'
         _ = self.reset()
         """
         if self.rwrd_func is None:
