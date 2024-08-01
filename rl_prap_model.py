@@ -1,92 +1,57 @@
 from pddl import pddl_domain, pddl_problem
 from create_pddl_gym import GymCreator
-import os
-import gzip
-import pickle
+from pddl import pddl_observations
+from multi_rl_planner import MultiRLPlanner
 import rl_planner
-from concurrent.futures import ThreadPoolExecutor
-import numpy as np
-import random
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import copy
+import time
+
+
+class PRAPAgent:
+    class task: #just to copy the structure of prap (steps_optimal, steps_observed)
+        def __init__(self, plan, plan_achieved, plan_cost, plan_action, solved, time):
+            self.plan = plan
+            self.plan_achieved = plan_achieved
+            self.plan_cost = plan_cost
+            self.plan_action = plan_action
+            self.solved = solved
+            self.time = time
+
+    def __init__(self, multi_rl_planner, obs_action_sequence):
+        self.multi_rl_planner = multi_rl_planner
+        self.observation = obs_action_sequence
+        self.env_obs = self._create_env_obs() #brauch man evtl gar nicht
+        self.steps_optimal = None
+
+    def _create_env_obs(self):
+        key_0 = list(self.multi_rl_planner.rl_planner_dict.keys())[0]
+        return copy.copy(self.multi_rl_planner.rl_planner_dict[key_0])
+
+    def perform_solve_optimal(self, print_actions=False, timeout=10):
+        start_time = time.time()
+        self.multi_rl_planner.solve(print_actions=print_actions, timeout=timeout)
+        self.steps_optimal = self.task(plan=self.multi_rl_planner.plan,
+                                       plan_achieved=self.multi_rl_planner.plan_achieved,
+                                       plan_cost=self.multi_rl_planner.plan_cost,
+                                       plan_action=self.multi_rl_planner.plan_action,
+                                       solved=self.multi_rl_planner.solved,
+                                       time=self.multi_rl_planner.time)
+        self.multi_rl_planner.reset()
+        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
 
 
 
-class MultiRLPlanner:
-    def __init__(self, environment_list, rl_model_list, redundant_actions_dict=None):
-        self.rl_planner_dict = self._create_environment_dict(environment_list, rl_model_list)
-        self.redundant_actions_dict = self._redundant_actions(redundant_actions_dict)
-        self.reset()
-        self.plan = {}
-        self.plan_achieved = {}
-        self.plan_cost = {}
-        self.time = {}
-        self.plan_action = {}
-        self.solved = 0  # 0:not tried yet, 1: success, 2: (at least one) timeout
 
-    def _redundant_actions(self, redundant_actions_dict):
-        if redundant_actions_dict is None:
-            return {k: v for k, v in zip(self.rl_planner_dict.keys(), [None for _ in self.rl_planner_dict.keys()])}
-        else:
-            return redundant_actions_dict
 
-    def _create_environment_dict(self, environment_list, rl_model_list):
-        rl_planner_dict = {}
-        if len(environment_list) != len(rl_model_list):
-            print("length of environment_list != length of rl_model_list")
-            return
-        i = 0
-        while i < len(environment_list):
-            rl_planner_dict[environment_list[i].problem_name] = rl_planner.RlPlanner(environment=environment_list[i],
-                                                                                      rl_model=rl_model_list[i])
-            i+=1
-        return rl_planner_dict
 
-    def reset(self):
-        for key in self.rl_planner_dict.keys():
-            self.rl_planner_dict[key].reset()
-        self.plan = {}
-        self.plan_achieved = {}
-        self.plan_cost = {}
-        self.time = {}
-        self.plan_action = {}
-        self.solved = 0
 
-    def set_state(self, state):
-        self.reset()
-        for key in self.rl_planner_dict.keys():
-            self.rl_planner_dict[key].set_state(state)
-
-    def solve(self, print_actions=False, timeout=10):
-        with ThreadPoolExecutor() as executor:
-            futures = []
-            for key in self.rl_planner_dict.keys():
-                print("start: ", key)
-                future = executor.submit(self.rl_planner_dict[key].solve,
-                                         print_actions=print_actions,
-                                         timeout=timeout,
-                                         redundant_actions=self.redundant_actions_dict[key])
-                futures.append(future)
-
-            for future in futures:
-                # Ensuring all futures are done
-                future.result()
-        plan_achieved = []
-        for key in self.rl_planner_dict.keys():
-            self.plan[key] = self.rl_planner_dict[key].plan
-            self.plan_achieved[key] = self.rl_planner_dict[key].plan_achieved
-            plan_achieved.append(self.plan_achieved[key])
-            self.plan_cost[key] = self.rl_planner_dict[key].plan_cost
-            self.plan_action[key] = self.rl_planner_dict[key].plan_action
-            self.time[key] = self.rl_planner_dict[key].time
-        if all(plan_achieved):
-            self.solved = 1
-        else:
-            self.solved = 2
 if __name__ == "__main__":
     goals = {1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__20-06-24 22-09-10.keras"},
              2: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__22-07-24 14-13-35.keras"},
              3: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__23-07-24 23-41-57.keras"}}
-    random_samples = 10
+    obs_path = r'/home/mwiubuntu/Seminararbeit/Interaction Logs/model_7/Session1-StationA/'
+
+    obs = pddl_observations(obs_path + '2_log_Salmonellosis.csv')
 
     # instantiate domain
     model = 7
@@ -148,8 +113,8 @@ if __name__ == "__main__":
 
     for goal in goals.keys():
         if goals[goal]["keep_goal_1_reward"]:
-            environment_list[goal-1].set_final_reward(20)
-            environment_list[goal-1].set_additional_reward_fluents("(achieved_goal_1)", 10)
+            environment_list[goal - 1].set_final_reward(20)
+            environment_list[goal - 1].set_additional_reward_fluents("(achieved_goal_1)", 10)
 
     path_rl_model = "/home/mwiubuntu/finalised_rl_models/"
     rl_model_list = [rl_planner.load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
@@ -172,32 +137,8 @@ if __name__ == "__main__":
                               "goal_3": talk_to_redundant}
 
     multi_rl_planner = MultiRLPlanner(environment_list, rl_model_list, redundant_actions_dict=redundant_actions_dict)
-    print("startgame")
-    multi_rl_planner.solve()
+    model = PRAPAgent(multi_rl_planner=multi_rl_planner, obs_action_sequence=obs)
+    model.perform_solve_optimal()
 
-    remove_goals = [key for key in environment_list[0].observation_dict_key
-                   if environment_list[0].observation_dict_key[key] in
-                    [f"achieved_goal_{goal}" for goal in goals.keys()]]
 
-    with gzip.open(path_rl_model + 'sample_set_code-1.pkl.gz') as file:
-        samples = pickle.load(file)
 
-    result_dict = {}
-    for key in samples.keys():
-        samples[key] = np.where(samples[key] == -1, 0, samples[key])
-        not_any = []
-        for remove_goal in remove_goals:
-            not_any.append(samples[key][remove_goal] != 1)
-
-        if all(not_any):
-            result_dict[key] = samples[key]
-
-    samples = [result_dict[random.choice(list(result_dict.keys()))] for _ in range(random_samples)]
-
-    for sample in samples:
-        print("------")
-        multi_rl_planner.set_state(sample)
-        print("start at : ", [x for x in environment_list[0].get_current_fluents() if "(at " in x][0])
-        multi_rl_planner.solve()
-        for goal in goals.keys():
-            print(multi_rl_planner.plan[f"goal_{goal}"])
