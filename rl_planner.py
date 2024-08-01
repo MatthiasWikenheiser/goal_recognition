@@ -334,4 +334,3 @@ if __name__ == '__main__':
         rl_planner.solve(redundant_actions=redundant_actions, print_actions=print_actions)
         print(rl_planner.plan)
 
-    env.action_dict
