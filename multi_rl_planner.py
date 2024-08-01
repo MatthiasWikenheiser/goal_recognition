@@ -1,32 +1,57 @@
 from pddl import pddl_domain, pddl_problem
 from create_pddl_gym import GymCreator
 import os
-import numpy as np
-import gzip
-import pickle
-import random
-import time
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
 import rl_planner
+from concurrent.futures import ThreadPoolExecutor
 
 class MultiRLPlanner:
-    def __init__(self, environment_list, rl_model_list):
-        self.environment_dict = self._create_environment_dict(environment_list, rl_model_list)
+    def __init__(self, environment_list, rl_model_list, redundant_actions_dict=None):
+        self.rl_planner_dict = self._create_environment_dict(environment_list, rl_model_list)
+        self.redundant_actions_dict = self._redundant_actions(redundant_actions_dict)
+        self.reset()
+        self.processes = {}
+
+    def _redundant_actions(self, redundant_actions_dict):
+        if redundant_actions_dict is None:
+            return {k: v for k, v in zip(self.rl_planner_dict.keys(), [None for _ in self.rl_planner_dict.keys()])}
+        else:
+            return redundant_actions_dict
 
     def _create_environment_dict(self, environment_list, rl_model_list):
-        environment_dict = {}
+        rl_planner_dict = {}
         if len(environment_list) != len(rl_model_list):
             print("length of environment_list != length of rl_model_list")
             return
         i = 0
         while i < len(environment_list):
-            environment_dict[environment_list[i].problem_name] = {"environment": environment_list[i],
-                                                                  "model": rl_model_list[i]}
+            rl_planner_dict[environment_list[i].problem_name] = rl_planner.RlPlanner(environment=environment_list[i],
+                                                                                      rl_model=rl_model_list[i])
             i+=1
-        return environment_dict
+        return rl_planner_dict
 
+    def reset(self):
+        for key in self.rl_planner_dict.keys():
+            self.rl_planner_dict[key].reset()
 
+    def set_state(self, state):
+        for key in self.rl_planner_dict.keys():
+            self.rl_planner_dict[key].set_state(state)
+
+    def solve(self, print_actions=False, timeout=10):
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for key in self.rl_planner_dict.keys():
+                print("start: ", key)
+                future = executor.submit(self.rl_planner_dict[key].solve,
+                                         print_actions=print_actions,
+                                         timeout=timeout,
+                                         redundant_actions=self.redundant_actions_dict[key])
+                futures.append(future)
+
+            for future in futures:
+                # Ensuring all futures are done
+                future.result()
 
 
 if __name__ == "__main__":
@@ -94,9 +119,7 @@ if __name__ == "__main__":
                         for problem in problem_list]
 
     for goal in goals.keys():
-        print(goal)
         if goals[goal]["keep_goal_1_reward"]:
-            print("keep_goal_1_reward")
             environment_list[goal-1].set_final_reward(20)
             environment_list[goal-1].set_additional_reward_fluents("(achieved_goal_1)", 10)
 
@@ -104,4 +127,21 @@ if __name__ == "__main__":
     rl_model_list = [rl_planner.load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
                      for goal in goals.keys()]
 
-    multi_rl_planner = MultiRLPlanner(environment_list, rl_model_list)
+    talk_to_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
+                         'ACTION-HAND-FINAL-WORKSHEET', 'ACTION-PICKUP',
+                         'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
+                         'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
+
+    redundant_actions_dict = {"goal_1": talk_to_redundant,
+                              "goal_2": talk_to_redundant,
+                              "goal_3": talk_to_redundant}
+
+    multi_rl_planner = MultiRLPlanner(environment_list, rl_model_list, redundant_actions_dict=redundant_actions_dict)
+    multi_rl_planner.solve()

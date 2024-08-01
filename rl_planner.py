@@ -10,6 +10,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
+
 def load_model(path):
     return tf.keras.models.load_model(path)
 
@@ -21,14 +22,23 @@ class RlPlanner:
         self.plan = {}
         self.plan_achieved = 0
         self.plan_cost = 0
+        self.time = None
 
     def set_state(self, state):
         self.env.reset(startpoint=False, state=state)
         self.plan = {}
+        self.plan_action = None
+        self.plan_achieved = 0
+        self.plan_cost = 0
+        self.time = None
 
     def reset(self):
         self.env.reset()
         self.plan = {}
+        self.plan_action = None
+        self.plan_achieved = 0
+        self.plan_cost = 0
+        self.time = None
 
     @staticmethod
     def _remove_circular_states_indices(states):
@@ -74,21 +84,24 @@ class RlPlanner:
                 return
             else:
                 if any([(self.env.state == old).all() for old in state_collection]) and not first_step:
-                    print("calc possible actions")
+                    if print_actions:
+                        print("calc possible actions")
                     calc_start_time = time.time()
                     if redundant_actions is None:
                         possible_actions = [a[0] for a in self.env.get_all_possible_actions(multiprocess=True)]
                     else:
                         possible_actions = [a[0] for a in self.env.get_all_possible_actions(multiprocess=True)
                                             if self.env.action_dict[a[0]]["action_ungrounded"] not in redundant_actions]
-                    print("calc_time over , ", round(time.time() - calc_start_time, 2), "s")
+                    if print_actions:
+                        print("calc_time over , ", round(time.time() - calc_start_time, 2), "s")
 
                     if time_passed >= timeout:
                         print("timeout: ", round(time_passed, 2), "s")
                         self.plan = {}
                         return
                     if (old_state == self.env.state).all():
-                        print("not possible action") # can also be action that doesnt alter the state anymore
+                        if print_actions:
+                            print("not possible action") # can also be action that doesnt alter the state anymore
                         # maintain old q_values and filter for a new possible action
                         old_action = action
                         q_values_possible_actions = [q_values[0][i] for i in possible_actions]
@@ -98,7 +111,8 @@ class RlPlanner:
                             j += -1
 
                     else:
-                        print("in circular state")
+                        if print_actions:
+                            print("in circular state")
                         plan.append(action)
                         state_for_clean_collection.append([self.env.state, True])
                         state_for_clean_dict[state_for_clean_dict_key] = self.env.state
@@ -113,7 +127,7 @@ class RlPlanner:
                             idx = np.argmax([1 if (self.env.state == circ[0]).all() else 0 for circ in circular_states])
                             circular_states[idx][1] += -1
                         # state has changed from state before, therefore predict new q-values
-                        q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :])
+                        q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :], verbose=0)
                         q_values_possible_actions = [q_values[0][i] for i in possible_actions]
 
                         try:
@@ -129,7 +143,7 @@ class RlPlanner:
                     if not first_step:
                         plan.append(action)
                         state_for_clean_collection.append([self.env.state, False])
-                    q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :])
+                    q_values = self.rl_model.predict(self.env._get_obs_vector()[np.newaxis, :], verbose=0)
                     action = np.argmax(q_values)
                 first_step = False
                 if print_actions:
@@ -207,6 +221,7 @@ if __name__ == '__main__':
     goal = 1
     keep_goal_1_reward = False
     random_samples = 10
+    print_actions = False
 
     # instantiate domain
     model = 7
@@ -308,7 +323,7 @@ if __name__ == '__main__':
 
     print("--------")
     print("start_game")
-    rl_planner.solve()
+    rl_planner.solve(print_actions=print_actions)
     print(rl_planner.plan)
     sample = samples[1]
 
@@ -316,7 +331,7 @@ if __name__ == '__main__':
         print("------")
         rl_planner.set_state(sample)
         print("start at : ", [x for x in rl_planner.env.get_current_fluents() if "(at " in x][0])
-        rl_planner.solve(redundant_actions=redundant_actions)
+        rl_planner.solve(redundant_actions=redundant_actions, print_actions=print_actions)
         print(rl_planner.plan)
 
     env.action_dict
