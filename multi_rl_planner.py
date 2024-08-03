@@ -56,10 +56,12 @@ class MultiRLPlanner:
         for key in self.rl_planner_dict.keys():
             self.rl_planner_dict[key].set_state(state)
 
-    def solve(self, print_actions=False, timeout=10):
+    def solve(self, print_actions=False, timeout=10, goal_list=None):
+        if goal_list is None:
+            goal_list = self.rl_planner_dict.keys()
         with ThreadPoolExecutor() as executor:
             futures = []
-            for key in self.rl_planner_dict.keys():
+            for key in goal_list:
                 print("start: ", key)
                 future = executor.submit(self.rl_planner_dict[key].solve,
                                          print_actions=print_actions,
@@ -71,7 +73,7 @@ class MultiRLPlanner:
                 # Ensuring all futures are done
                 future.result()
         plan_achieved = []
-        for key in self.rl_planner_dict.keys():
+        for key in goal_list:
             self.plan[key] = self.rl_planner_dict[key].plan
             self.plan_achieved[key] = self.rl_planner_dict[key].plan_achieved
             plan_achieved.append(self.plan_achieved[key])

@@ -401,6 +401,9 @@ class GymCreator:
     def __init__(self, domain, problem, constant_predicates=None, reward_function="costs", add_actions = None,
                  negative_booleans_coding=0):
         self.domain = domain
+        self.domain_action_cost = {key: value for key, value in zip (self.domain.action_dict.keys(),
+                                                                     [self.domain.action_dict[k].action_cost
+                                                                      for k in self.domain.action_dict.keys()])}
         self.problem = problem
         self.env_name = self.domain.name
         self.py_path = self._create_py_path()
@@ -538,6 +541,7 @@ except:
 
 
 import os
+import pddl
 from gym import Env
 from gym.spaces import Discrete, MultiBinary, Box, Tuple
 sys.path.append(r'E:/goal_recognition/create_pddl_gym.py')
@@ -778,8 +782,12 @@ from all_actions_mp import get_all_possible_actions
                 action["reward"] = -abs(change_value_fl)
             action_dict[i] = action
             i += 1
-
+            action["action_grounded"] = action["action_grounded"].replace(" ", "_")
         return action_dict
+
+    def _inverse_action_dict(self):
+        return {key: value for key, value in
+         [(self.action_params[key]["action_grounded"], key) for key in self.action_params.keys()]}
 
     def _str_env_class(self):
         str_class=f"""
@@ -788,6 +796,8 @@ class PDDLENV(Env):
         self.name = "{self.env_name}"
         self.action_space = Discrete({len(self.action_params.keys())})
         self.action_dict= {self.action_params}
+        self.action_domain_cost = {self.domain_action_cost}
+        self.inverse_action_dict = {self._inverse_action_dict()}
         self.ungrounded_actions = {self._ungrounded_actions()}
         self.start_fluents = {self._start_fluents()}
         self.goal_fluents = '{self.problem.goal_fluents[0]}'
@@ -1061,5 +1071,5 @@ if __name__ == '__main__':
     env_ci.get_all_possible_actions(multiprocess=True)
     print(time.time() - start)
 
-
-
+    [(env_ci.action_dict[key]["action_grounded"], key) for key in env_ci.action_dict.keys()][:10]
+    [(key, env_ci.inverse_action_dict[key]) for key in env_ci.inverse_action_dict.keys()][:10]
