@@ -357,5 +357,5 @@ if __name__ == "__main__":
     multi_rl_planner = MultiRLPlanner(environment_list, rl_model_list, redundant_actions_dict=redundant_actions_dict)
     model = PRAPAgent(multi_rl_planner=multi_rl_planner, obs_action_sequence=obs)
     model.perform_solve_optimal()
-    model.perform_solve_observed(step=8)
+    model.perform_solve_observed()
 
