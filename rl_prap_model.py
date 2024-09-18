@@ -7,6 +7,8 @@ import copy
 import time
 import numpy as np
 import pandas as pd
+import os
+import random
 
 
 class PRAPAgent:
@@ -33,6 +35,9 @@ class PRAPAgent:
         self.summary_level_1 = None
         self.summary_level_2 = None
         self.summary_level_3 = None
+
+        ## delete later
+        self.state_collection = []
 
     def _create_env_obs(self):
         key_0 = list(self.multi_rl_planner.rl_planner_dict.keys())[0]
@@ -183,7 +188,7 @@ class PRAPAgent:
         if step == -1:
             step = self.observation.obs_len
         i = 0
-        while i < step:
+        while i < step and str(self.observation.obs_file.loc[i, "label"]) != "nan":
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             step_time = time.time()
             print("-----------")
@@ -199,6 +204,12 @@ class PRAPAgent:
             self.cost_obs_cum_dict[i + 1] = suffix_cost
             print("suffix_cost: ", suffix_cost)
             new_state, _, _, _ = self.env_obs.step(action)
+
+
+            ## delete later
+            self.state_collection.append(new_state)
+
+
             self.multi_rl_planner.set_state(new_state)
             self.multi_rl_planner.solve(print_actions=print_actions, timeout=time_step, goal_list=goals_remaining)
             for goal in self.multi_rl_planner.plan.keys():
@@ -264,12 +275,37 @@ class PRAPAgent:
 
 
 if __name__ == "__main__":
-    goals = {1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__20-06-24 22-09-10.keras"},
-             2: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__22-07-24 14-13-35.keras"},
-             3: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__23-07-24 23-41-57.keras"}}
-    obs_path = r'/home/mwiubuntu/Seminararbeit/Interaction Logs/model_7/Session1-StationA/'
+    model_no = 7
+    path_logs = f'/home/mwiubuntu/Seminararbeit/Interaction Logs/model_{model_no}/'
+    log_folders = os.listdir(path_logs)
+    list_files_obs = []
+    for folder in log_folders:
+        path_folder = path_logs + folder + "/"
+        for file in os.listdir(path_folder):
+            file_path = path_folder + file
+            list_files_obs.append(file_path)
+    list_files_obs.sort()
+    observations = [pddl_observations(file) for file in list_files_obs]
 
-    obs = pddl_observations(obs_path + '2_log_Salmonellosis.csv')
+
+    goals = {1: {"keep_goal_1_reward": False, "rl_models_dict": "from_goal_5_model_7_no_hl__04-08-24 23-08-06.keras"},
+             #1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__04-08-24 23-07-13.keras"},
+             # 1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__04-08-24 23-07-13.keras"}
+             2: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__22-07-24 14-13-35.keras"},
+             3: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__06-08-24 09-29-21.keras"},
+             4: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__29-07-24 07-51-27.keras"},
+             5: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__04-08-24 23-08-06.keras"},
+             #6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 07-23-38.keras"},
+             6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 08-09-00.keras"},
+             # 6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 09-36-56.keras"},
+             # 7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__14-08-24 22-29-26.keras"}
+             # 7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__15-08-24 14-46-54.keras"}
+             7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__17-08-24 16-01-31.keras"}
+             }
+
+    obs = observations[8]
+    #obs = random.choice(observations)
+    print(obs.observation_path)
 
     # instantiate domain
     model = 7
@@ -329,10 +365,12 @@ if __name__ == "__main__":
     environment_list = [GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions).make_env()
                         for problem in problem_list]
 
+    g=0
     for goal in goals.keys():
         if goals[goal]["keep_goal_1_reward"]:
-            environment_list[goal - 1].set_final_reward(20)
-            environment_list[goal - 1].set_additional_reward_fluents("(achieved_goal_1)", 10)
+            environment_list[g].set_final_reward(20)
+            environment_list[g].set_additional_reward_fluents("(achieved_goal_1)", 10)
+        g+=1
 
     path_rl_model = "/home/mwiubuntu/finalised_rl_models/"
     rl_model_list = [rl_planner.load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
@@ -350,12 +388,34 @@ if __name__ == "__main__":
                          'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
                          'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
 
+    goal_six_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
+                         'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
+                         'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
+                         'ACTION-HAND-FINAL-WORKSHEET', "ACTION-TALK-TO"]
+
+    goal_seven_redundant = ['ACTION-PICKUP','ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
+                            'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
+
     redundant_actions_dict = {"goal_1": talk_to_redundant,
                               "goal_2": talk_to_redundant,
-                              "goal_3": talk_to_redundant}
+                              "goal_3": talk_to_redundant,
+                              "goal_4": talk_to_redundant,
+                              "goal_5": talk_to_redundant,
+                              "goal_6": goal_six_redundant,
+                              "goal_7": goal_seven_redundant}
 
     multi_rl_planner = MultiRLPlanner(environment_list, rl_model_list, redundant_actions_dict=redundant_actions_dict)
     model = PRAPAgent(multi_rl_planner=multi_rl_planner, obs_action_sequence=obs)
     model.perform_solve_optimal()
     model.perform_solve_observed()
 
+
+    # goal 6 evaluation
+    goal_6_eval = model.summary_level_2[model.summary_level_2["goal"] == "goal_6"]
+    print(goal_6_eval.groupby("goal_achieved").count()["observed_action_no"])
+    print(goal_6_eval["seconds"].sum())

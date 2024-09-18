@@ -214,7 +214,7 @@ class RlPlanner:
             self.plan = {}
             return
         self.time = time_passed
-        print("solved, ",  self.time, "s")
+        print(f"solved {self.env.problem_name},  {self.time} s")
 
 
 if __name__ == '__main__':
