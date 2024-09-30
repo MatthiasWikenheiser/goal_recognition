@@ -281,16 +281,16 @@ def convergence_point(model_type, hash_code_model, hash_code_action, rl_type=0, 
 
 if __name__ == '__main__':
     model_7_hash = '0af2422953491e235481a3b7e0a10b74afc640356989b94d627359d1'
-    model_configs = ['495afca3d199dd8d66b44b1c5e414f225a19d42c9a540eabdcfec02e',
-                     '756b69e2c687b5c94fd2f2bc8214c53545b743fb43b4a2b0db86637a',
-                     '9ba2b59e1b25711ae06d73ddd96bb4d642744cdb5bc0ac291131329f',
-                     'b9b27945d52fbb94efbd91229da494b052aaaf36cd0026c4daf9bbfd',
-                     'd333764c7affc1cf43dd03e9bfc62876569666fbdabfeb66cc4a1f09'
-                     ]
-    for model_config in model_configs:
-        print(model_config, cross_validation(model_type="gm_prap_model",
-                               hash_code_model=model_7_hash,
-                               hash_code_action=model_config))
+    #model_configs = ['495afca3d199dd8d66b44b1c5e414f225a19d42c9a540eabdcfec02e',
+                     #'756b69e2c687b5c94fd2f2bc8214c53545b743fb43b4a2b0db86637a',
+                     #'9ba2b59e1b25711ae06d73ddd96bb4d642744cdb5bc0ac291131329f',
+                     #'b9b27945d52fbb94efbd91229da494b052aaaf36cd0026c4daf9bbfd',
+                     #'d333764c7affc1cf43dd03e9bfc62876569666fbdabfeb66cc4a1f09'
+                     #]
+    #for model_config in model_configs:
+        #print(model_config, cross_validation(model_type="gm_prap_model",
+                               #hash_code_model=model_7_hash,
+                               #hash_code_action=model_config))
 
 
 

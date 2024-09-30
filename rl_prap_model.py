@@ -234,8 +234,31 @@ class PRAPAgent:
 
             i+=1
         self.summary_level_1, self.summary_level_2, self.summary_level_3 = self._create_summary()
-        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
 
+        i = self.observation.obs_len - 1
+        goals_remaining = [goal for goal in self.multi_rl_planner.rl_planner_dict.keys()
+                           if goal in self.observation.obs_file.loc[i, "goals_remaining"]]
+        observed_action_no = [self.summary_level_2["observed_action_no"].max()+1 for _ in goals_remaining]
+        observed_action = [self.observation.obs_file.loc[i, "action"] for _ in goals_remaining]
+        goal_achieved = [0 for _ in goals_remaining]
+        goal_cost = [np.nan for _ in goals_remaining]
+        goal_costs_cumulated = [np.nan for _ in goals_remaining]
+        seconds = [np.nan for _ in goals_remaining]
+        goal_prob = [0 for _ in goals_remaining]
+        goal_prob_nrmlsd = [0 for _ in goals_remaining]
+
+        last_row = pd.DataFrame({"observed_action_no":observed_action_no,
+                                 "observed_action":observed_action,
+                                 "goal":goals_remaining,
+                                 "goal_achieved":goal_achieved,
+                                 "goal_cost":goal_cost,
+                                 "goals_costs_cumulated":goal_costs_cumulated,
+                                 "seconds":seconds,
+                                 "goal_prob":goal_prob,
+                                 "goal_prob_nrmlsd":goal_prob_nrmlsd})
+        self.summary_level_2 = pd.concat([self.summary_level_2, last_row])
+        self.summary_level_2.reset_index(drop=True, inplace=True)
+        print("total time-elapsed: ", round(time.time() - start_time, 2), "s")
 
     def _calc_prob(self, goals_remaining, suffix_cost, step = 1, priors= None, beta = 1):
         if step == 0:
