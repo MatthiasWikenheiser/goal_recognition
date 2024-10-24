@@ -717,7 +717,8 @@ if __name__ == "__main__":
     obs = observations[81]
     # obs = random.choice(observations)
     print(obs.observation_path)
-
+    solution = obs.name.split("_")[-1].lower()
+    print("Solution:", solution)
     #----------
     #obs = pddl_observations(r"E:\Interaction logs\Test-Session/1_log_Salmonellosis.csv")
     #----------
@@ -774,7 +775,13 @@ if __name__ == "__main__":
 
 
     path_pddl = os.getenv("PATH_PDDL")
-    domain = pddl_domain(path_pddl + f"model_{model}_{config}.pddl")
+    if os.getenv("OS") == "WIN":
+        d_path = path_pddl + f"model_{model}_{config}.pddl"
+    elif os.getenv("OS") == "UBUNTU":
+        d_path = path_pddl + f"model_{model}_{config}_{solution}.pddl"
+    print("Domain:", d_path)
+    domain = pddl_domain(d_path)
+
     #problem = pddl_problem(path_pddl + f"model_{model}_goal_1_crystal_island_problem.pddl")
     problem_list = [pddl_problem(path_pddl + f"model_{model}_goal_{goal}_crystal_island_problem.pddl")
                     for goal in goals.keys()]
@@ -802,8 +809,19 @@ if __name__ == "__main__":
                                                                           "(increase (costs) 100.0)")
 
     path_rl_model = os.getenv("PATH_RL_MODEL")
-    rl_model_list = [load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
-                     for goal in goals.keys()]
+
+    if os.getenv("OS") == "UBUNTU":
+        rl_model_list = []
+        for goal in goals.keys():
+            if goal == 7:
+                rl_g_seven = path_rl_model + f"goal_{goal}/" + solution + "_" + goals[goal]["rl_models_dict"]
+                print("GOAL 7 - RL_MODEL:", rl_g_seven)
+                rl_model_list.append(load_model(rl_g_seven))
+            else:
+                rl_model_list.append(load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"]))
+    elif os.getenv("OS") == "WIN":
+        rl_model_list = [load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
+                         for goal in goals.keys()]
 
     talk_to_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
                          'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
