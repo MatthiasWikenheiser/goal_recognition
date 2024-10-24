@@ -16,6 +16,8 @@ class GRAQL:
                  goal_keys=[f"goal_{i}" for i in range(1,8)],
                  discount_factor=0.95, additional_reward_fluents=None, scale_to=9, standard_neg_reward=-1):
         self.observation = observation_sequence
+        self.station = self.observation.observation_path.split("/")[-2]
+        self.log_file = self.observation.observation_path.split("/")[-1]
         self.additional_reward_fluents = additional_reward_fluents
         self.rl_model_dict, self.env_dict = self._init_dict(rl_model_list, goal_keys, env_list)
         self.hash_code_model = hash_code_model
@@ -30,7 +32,10 @@ class GRAQL:
         self.test_q_adjustment = {}
         self.metric = None
         self.q_summary = None
+        self.summary = None
+        self.threshold_control_table = None
         self.threshold = None
+        self.metric_help_iterative = {}
 
     def _additional_fluent_true(self, key):
         if key in self.additional_reward_fluents.keys():
@@ -286,9 +291,170 @@ class GRAQL:
         for key in self.env_dict.keys():
             self.env_dict[key].reset()
 
+    def _metric_kl_divergence(self, step, threshold):
+        self.metric = "kl_divergence"
+        self.threshold = threshold
+        self.metric_help_iterative[step] = {"threshold_tolerance": None,
+                                            "tolerance": None,
+                                            "best_metric": None}
+
+        # threshold as prob, f.e. every softmax q-value with prob higher as e.g. 0.5 (threshold-parameter) as tolerance
+        # threshold is then: prob * log(prob)
+        # threshold is cumulated over steps
+        # if no goal is above that threshold just take the closest one
+        t = np.abs(threshold)
+        t = t * np.log(t)
+
+        goals_remaining = self.performed_step[step]["goals_remaining"]
+        max_closeness = -np.inf
+
+        if step == 0:
+            changed_goal_set = True
+        else:
+            goals_remaining_before = self.performed_step[step-1]["goals_remaining"]
+            if len(goals_remaining_before) != len(goals_remaining):
+                changed_goal_set = True
+            else:
+                changed_goal_set = False
+
+        if changed_goal_set:
+            self.metric_help_iterative[step]["threshold_tolerance"] = t
+        else:
+            self.metric_help_iterative[step]["threshold_tolerance"] = (t + self.metric_help_iterative
+                                                                       [step - 1]["threshold_tolerance"])
+
+        # Add a small epsilon to avoid log(0)
+        epsilon = 1e-10
+
+        for goal in goals_remaining:
+            # due to overflow, assumption: no action can cause a state where it needs 300 steps to reach the goal
+            # in addition cast to float64
+            qs = np.where(self.performed_step[step][goal]["all_q_values"][0] < -300, -300,
+                          self.performed_step[step][goal]["all_q_values"][0]).astype(np.float64)
+            # shift all values to start from zero
+            min_q = np.min(qs)  # np.array([[q1, q1]]) -> index [0]
+            shifted_qs = abs(min_q) + qs
+
+            # deviating from amado et al, implement real softmax policy
+            exp_Q = np.exp(shifted_qs)
+            sum_q_values = np.sum(exp_Q)
+
+            policy = exp_Q[self.performed_step[step]["action_key"]]
+            q_transformed = policy / sum_q_values
+            if q_transformed == 0:
+                q_transformed += epsilon
+            q_transformed * np.log(q_transformed)
+
+            if changed_goal_set:
+                sum_div = q_transformed * np.log(q_transformed)
+            else:
+                sum_div = ((q_transformed * np.log(q_transformed)) +
+                           self.metric_help_iterative[step - 1][goal]["cumulated_sum"])
+            self.metric_help_iterative[step][goal] = {"cumulated_sum": sum_div}
+
+            #sum_div = 0
+            #threshold_tolerance = 0
+
+
+            #for i in range(step + 1):
+                # due to overflow, assumption: no action can cause a state where it needs 300 steps to reach the goal
+                # in addition cast to float64
+             #   qs = np.where(self.performed_step[i][goal]["all_q_values"][0] < -300, -300,
+              #           self.performed_step[i][goal]["all_q_values"][0]).astype(np.float64)
+                # shift all values to start from zero
+               # min_q = np.min(qs) # np.array([[q1, q1]]) -> index [0]
+               # shifted_qs = abs(min_q) + qs
+
+                #deviating from amado et al, implement real softmax policy
+               # exp_Q = np.exp(shifted_qs)
+               # sum_q_values = np.sum(exp_Q)
+               # threshold_tolerance += t
+
+               # policy = exp_Q[self.performed_step[i]["action_key"]]
+               # q_transformed = policy/sum_q_values
+               # if q_transformed == 0:
+                #    q_transformed += epsilon
+                #sum_div += q_transformed * np.log(q_transformed)
+
+            self.performed_step[step][goal]["metric"] = sum_div  # measure of closeness
+            if sum_div > max_closeness:
+                max_closeness = sum_div
+
+
+
+
+        print("max_closeness", max_closeness)
+        self.metric_help_iterative[step]["best_metric"] = max_closeness
+        print("threshold_tolerance", self.metric_help_iterative[step]["threshold_tolerance"])
+        lower_tolerance = max_closeness + self.metric_help_iterative[step]["threshold_tolerance"]
+        self.metric_help_iterative[step]["tolerance"] = lower_tolerance
+        print("lower_tolerance", lower_tolerance)
+
+
+
+
+        self.performed_step[step]["prediction"] = [goal for goal in goals_remaining
+                                                   if self.performed_step[step][goal]["metric"] >= lower_tolerance]
+
+        goal_prob_nrmlsd = self.distances_to_probabilities_dict(step)
+        for key in goal_prob_nrmlsd:
+            self.performed_step[step][key]["goal_prob_nrmlsd"] = goal_prob_nrmlsd[key]
+
+    def _metric_max_util(self, step, threshold):
+        self.metric = "max_util"
+        self.threshold = threshold
+        self.metric_help_iterative[step] = {"threshold_tolerance": None,
+                                            "tolerance": None,
+                                            "best_metric": None}
+
+        goals_remaining = self.performed_step[step]["goals_remaining"]
+        max_closeness = -np.inf
+
+        if step == 0:
+            changed_goal_set = True
+        else:
+            goals_remaining_before = self.performed_step[step-1]["goals_remaining"]
+            if len(goals_remaining_before) != len(goals_remaining):
+                changed_goal_set = True
+            else:
+                changed_goal_set = False
+
+        if changed_goal_set:
+            self.metric_help_iterative[step]["threshold_tolerance"] = threshold
+        else:
+            self.metric_help_iterative[step]["threshold_tolerance"] = (threshold +
+                                                                       self.metric_help_iterative[step - 1]
+                                                                       ["threshold_tolerance"])
+        for goal in goals_remaining:
+            if changed_goal_set:
+                sum_qs = self.performed_step[step][goal]["q_adjusted"]
+            else:
+                sum_qs = (self.performed_step[step][goal]["q_adjusted"] +
+                          self.metric_help_iterative[step-1][goal]["cumulated_q"] )
+            self.metric_help_iterative[step][goal] = {"cumulated_q": sum_qs}
+
+            #for i in range(step+1):
+                #sum_qs += self.performed_step[i][goal]["q_adjusted"]
+                #threshold_tolerance += threshold
+
+            self.performed_step[step][goal]["metric"] = sum_qs # measure of closeness
+            if sum_qs > max_closeness:
+                max_closeness = sum_qs
+
+        lower_tolerance = max_closeness - self.metric_help_iterative[step]["threshold_tolerance"]
+        self.metric_help_iterative[step]["best_metric"] = max_closeness
+        self.metric_help_iterative[step]["tolerance"] = lower_tolerance
+        self.performed_step[step]["prediction"] = [goal for goal in goals_remaining
+                                                   if self.performed_step[step][goal]["metric"] >= lower_tolerance]
+
+        goal_prob_nrmlsd = self.distances_to_probabilities_dict(step)
+        for key in goal_prob_nrmlsd:
+            self.performed_step[step][key]["goal_prob_nrmlsd"] = goal_prob_nrmlsd[key]
+
     def _metric_distance_to_goal(self, step, threshold):
         self.metric = "distance_to_goal"
         self.threshold = threshold
+
         goals_remaining = self.performed_step[step]["goals_remaining"]
         lowest_distance = np.inf
 
@@ -302,37 +468,153 @@ class GRAQL:
         upper_tolerance = lowest_distance + threshold
         self.performed_step[step]["prediction"] = [goal for goal in goals_remaining
                                                    if self.performed_step[step][goal]["metric"]<=upper_tolerance]
+
+        self.metric_help_iterative[step] = {"threshold_tolerance": threshold,
+                                            "tolerance": upper_tolerance,
+                                            "best_metric": lowest_distance}
+
         goal_prob_nrmlsd = self.distances_to_probabilities_dict(step)
         for key in goal_prob_nrmlsd:
             self.performed_step[step][key]["goal_prob_nrmlsd"] = goal_prob_nrmlsd[key]
 
     def distances_to_probabilities_dict(self, step):
         # Extract the keys and values (distances) from the input dictionary
-        distances_dict = {k:v for k,v in zip(self.performed_step[step]["goals_remaining"],
-                                             [self.performed_step[step][goal]["metric"]
-                                              for goal in self.performed_step[step]["goals_remaining"]]
-                                             )}
+        #distances_dict = {k:v for k,v in zip(self.performed_step[step]["goals_remaining"],
+                                             #[self.performed_step[step][goal]["metric"]
+                                              #for goal in self.performed_step[step]["goals_remaining"]]
+                                             #)}
 
-        keys = list(distances_dict.keys())
-        distances = np.array(list(distances_dict.values()))
+        #keys = list(distances_dict.keys())
+        #distances = np.array(list(distances_dict.values()))
 
         # Subtract the maximum distance to avoid numerical overflow
-        max_distance = np.max(distances)
-        adjusted_distances = distances - max_distance
+        #max_distance = np.max(distances)
+        #adjusted_distances = distances - max_distance
 
         # Apply the softmax function to the adjusted distances
-        exp_values = np.exp(-adjusted_distances)  # Negative to favor smaller distances
-        probabilities = np.round(exp_values / np.sum(exp_values), 4)
+        #exp_values = np.exp(-adjusted_distances)  # Negative to favor smaller distances
+        #probabilities = np.round(exp_values / np.sum(exp_values), 4)
 
         # Create a new dictionary with the same keys and the computed probabilities
-        probabilities_dict = dict(zip(keys, probabilities))
-
+        #probabilities_dict = dict(zip(keys, probabilities))
+        probabilities_dict = {k: v for k, v in zip(self.performed_step[step]["goals_remaining"],
+                                                 [np.nan
+                                                  for goal in self.performed_step[step]["goals_remaining"]])}
         return probabilities_dict
+
+    def _create_threshold_control_table(self):
+        control_table = self.summary[["model_type", "hash_code_model", "hash_code_action", "rl_type", "iterations",
+                                      "station", "log_file", "observed_action_no", "observed_action", "t",
+                                      "goals_remaining"]].copy()
+        for goal in self.performed_step[0]["goals_remaining"]:
+            goal_metric = []
+            for step in self.performed_step.keys():
+                if goal in self.performed_step[step].keys():
+                    goal_metric.append(self.performed_step[step][goal]["metric"])
+                else:
+                    goal_metric.append(np.nan)
+            control_table.loc[:, f"{goal}_metric"] = pd.Series(goal_metric)
+
+        threshold_tolerance_list = []
+        tolerance_list = []
+        best_metric_list = []
+        for step in self.metric_help_iterative.keys():
+            threshold_tolerance_list.append(self.metric_help_iterative[step]["threshold_tolerance"])
+            tolerance_list.append(self.metric_help_iterative[step]["tolerance"])
+            best_metric_list.append(self.metric_help_iterative[step]["best_metric"])
+        control_table.loc[:, "best_metric"] = pd.Series(best_metric_list)
+        control_table.loc[:, "threshold_tolerance"] = pd.Series(threshold_tolerance_list)
+        control_table.loc[:, "tolerance"] = pd.Series(tolerance_list)
+        control_table["prediction"] = self.summary["predicted_goals"]
+        control_table["time_stamp"] = self.summary["time_stamp"]
+        return control_table
+
+    def _create_summary(self):
+        model_type = []
+        hash_code_model = []
+        hash_code_action = []
+        rl_type = []
+        iterations = []
+        station = []
+        log_file = []
+        observed_action_no = []
+        observed_action = []
+        t = []
+        goals_remaining = []
+        total_goals_no = []
+        goals_achieved = []
+        goals_achieved_no = []
+        label = []
+        predicted_goals = []
+        predicted_goals_no = []
+        prob = []
+        diff_t = []
+        seconds = []
+
+        for step_key in self.performed_step.keys():
+            step_dict = self.performed_step[step_key]
+            model_type.append(f"graql_model_{self.metric}")
+            hash_code_model.append(self.hash_code_model)
+            hash_code_action.append(self.hash_code_action)
+            rl_type.append("0")
+            iterations.append(f"threshold: {self.threshold}")
+            station.append(self.station)
+            log_file.append(self.log_file)
+            observed_action_no.append(step_key+1)
+            observed_action.append(step_dict["action"])
+            t.append(self.observation.obs_file.loc[step_key, "t"])
+            goals_remaining.append(str(step_dict["goals_remaining"]).replace("'",""))
+            total_goals_no.append(len(step_dict["goals_remaining"]))
+            goals_achieved.append(str(step_dict["goals_remaining"]).replace("'","")
+                                  if len(step_dict["prediction"]) > 0 else "[]")
+            goals_achieved_no.append(len(step_dict["goals_remaining"]) if len(step_dict["prediction"]) > 0 else "[]")
+            l = self.observation.obs_file.loc[step_key, "label"]
+            label.append(l)
+            predicted_goals.append(str(step_dict["prediction"]).replace("'",""))
+            predicted_goals_no.append(len(step_dict["prediction"]))
+            try:
+                prob.append(max([(step_dict[g]["goal_prob_nrmlsd"], g) for g in step_dict["prediction"]])[0])
+            except:
+                prob.append(np.nan)
+            diff_t.append(step_dict["time_step"])
+            seconds.append(step_dict["solved_time"])
+
+        summary = pd.DataFrame({"model_type": model_type,
+                                "hash_code_model": hash_code_model,
+                                "hash_code_action": hash_code_action,
+                                "rl_type": rl_type,
+                                "iterations": iterations,
+                                "station": station,
+                                "log_file": log_file,
+                                "observed_action_no": observed_action_no,
+                                "observed_action": observed_action,
+                                "t": t,
+                                "goals_remaining": goals_remaining,
+                                "total_goals_no": total_goals_no,
+                                "goals_achieved": goals_achieved,
+                                "goals_achieved_no": goals_achieved_no,
+                                "label": label,
+                                "predicted_goals": predicted_goals,
+                                "predicted_goals_no": predicted_goals_no
+                  })
+
+
+        summary["correct_prediction"] = \
+            summary.apply \
+                (lambda x: 1 if str(x["label"]) != "nan" and \
+                                str(x["label"]) in str(x["predicted_goals"]).replace("_", "") else 0,
+                 axis=1)
+
+        summary["prob"] = prob
+        summary["diff_t"] = diff_t
+        summary["seconds"] = seconds
+        summary["time_left"] = np.where(summary["total_goals_no"] == summary["goals_achieved_no"],
+                                               summary["diff_t"] - summary["seconds"], 0)
+        summary["time_stamp"] = self.time_stamp_summary
+        return summary
 
     def _create_q_summary(self):
         self.time_stamp_summary = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        station = self.observation.observation_path.split("/")[-2]
-        log_file = self.observation.observation_path.split("/")[-1]
         list_step_dfs = []
         for step_key in self.performed_step.keys():
             step = self.performed_step[step_key]
@@ -340,8 +622,8 @@ class GRAQL:
                 "model_type":[f"graql_model_{self.metric}" for _ in step["goals_remaining"]],
                 "hash_code_model": [self.hash_code_model for _ in step["goals_remaining"]],
                 "hash_code_action": [self.hash_code_action for _ in step["goals_remaining"]],
-                "station":[station for _ in step["goals_remaining"]],
-                "log_file": [log_file for _ in step["goals_remaining"]],
+                "station":[self.station for _ in step["goals_remaining"]],
+                "log_file": [self.log_file for _ in step["goals_remaining"]],
                 "observed_action_no": [step_key+1 for _ in step["goals_remaining"]],
                 "observed_action": [step["action"] for _ in step["goals_remaining"]],
                 "goal": step["goals_remaining"],
@@ -360,19 +642,19 @@ class GRAQL:
         q_summary = pd.concat(list_step_dfs)
         return q_summary
 
-    def perform_solve_observed(self, metric, threshold=1.5):
+    def perform_solve_observed(self, metric, threshold):
         self.current_state = self.env_obs.reset()
         self._reset_all_envs()
         start_time = time.time()
         i = 0
-        while i < 30:#self.observation.obs_len and str(self.observation.obs_file.loc[i, "label"]) != "nan":
+        while i < self.observation.obs_len and str(self.observation.obs_file.loc[i, "label"]) != "nan":
             step_time = time.time()
             action = self.observation.obs_file.loc[i, "action"].replace(" ", "_")
             time_step = self.observation.obs_file.loc[i, "diff_t"]
             goals_remaining = [goal for goal in self.rl_model_dict.keys() if goal in
                                                           self.observation.obs_file.loc[i, "goals_remaining"]]
             print("-----------")
-            print("step:", i, ",time elapsed:", round(step_time - start_time, 2), "s")
+            print("step:", i+1, ",time elapsed:", round(step_time - start_time, 2), "s")
             print(action, ",", time_step, "seconds to solve")
             print("goals_left: ", goals_remaining)
 
@@ -404,6 +686,10 @@ class GRAQL:
 
             if metric=="distance_to_goal":
                 self._metric_distance_to_goal(step=i, threshold=threshold)
+            elif metric=="max_util":
+                self._metric_max_util(step=i, threshold=threshold)
+            elif metric =="kl_divergence":
+                self._metric_kl_divergence(step=i, threshold=threshold)
 
             solved_time = time.time() - step_time
             print("solved in ", round(solved_time, 2), "s")
@@ -418,6 +704,8 @@ class GRAQL:
             self.current_state, _, _, _ = self.env_obs.step(action_key)
             i+=1
         self.q_summary = self._create_q_summary()
+        self.summary = self._create_summary()
+        self.threshold_control_table = self._create_threshold_control_table()
 
 
 if __name__ == "__main__":
@@ -452,6 +740,10 @@ if __name__ == "__main__":
     obs = observations[81]
     # obs = random.choice(observations)
     print(obs.observation_path)
+
+    #----------
+    #obs = pddl_observations(r"E:\Interaction logs\Test-Session/1_log_Salmonellosis.csv")
+    #----------
 
     # instantiate domain
     model = 7
@@ -583,5 +875,11 @@ if __name__ == "__main__":
     #model.test_q_adjustment_optimal_plans()
 
 
-    model.perform_solve_observed(metric="distance_to_goal")
+    #model.perform_solve_observed(metric="distance_to_goal", threshold=1.5)
+    #model.perform_solve_observed(metric="max_util", threshold=1.5)
+    model.perform_solve_observed(metric="kl_divergence", threshold=0.9)
 
+    x = model.q_summary[model.q_summary["goal"] == 'goal_6']
+    #[(model.env_obs.action_dict[k]["action_grounded"], k) for k in model.env_obs.action_dict.keys() if "ACTION-DROP_FOOD-MILK_LOC-OUTDOORS-NULL-E" in model.env_obs.action_dict[k]["action_grounded"]]
+
+    #x = model.q_summary[model.q_summary["goal"] == 'goal_1']
