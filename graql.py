@@ -10,6 +10,9 @@ import os
 import datetime as dt
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = "0"
 from scipy.optimize import fsolve
+from dotenv import load_dotenv
+
+load_dotenv('.env.graql')
 
 class GRAQL:
     def __init__(self, env_list, rl_model_list, observation_sequence, hash_code_model, hash_code_action,
@@ -352,49 +355,23 @@ class GRAQL:
                            self.metric_help_iterative[step - 1][goal]["cumulated_sum"])
             self.metric_help_iterative[step][goal] = {"cumulated_sum": sum_div}
 
-            #sum_div = 0
-            #threshold_tolerance = 0
-
-
-            #for i in range(step + 1):
-                # due to overflow, assumption: no action can cause a state where it needs 300 steps to reach the goal
-                # in addition cast to float64
-             #   qs = np.where(self.performed_step[i][goal]["all_q_values"][0] < -300, -300,
-              #           self.performed_step[i][goal]["all_q_values"][0]).astype(np.float64)
-                # shift all values to start from zero
-               # min_q = np.min(qs) # np.array([[q1, q1]]) -> index [0]
-               # shifted_qs = abs(min_q) + qs
-
-                #deviating from amado et al, implement real softmax policy
-               # exp_Q = np.exp(shifted_qs)
-               # sum_q_values = np.sum(exp_Q)
-               # threshold_tolerance += t
-
-               # policy = exp_Q[self.performed_step[i]["action_key"]]
-               # q_transformed = policy/sum_q_values
-               # if q_transformed == 0:
-                #    q_transformed += epsilon
-                #sum_div += q_transformed * np.log(q_transformed)
-
             self.performed_step[step][goal]["metric"] = sum_div  # measure of closeness
             if sum_div > max_closeness:
                 max_closeness = sum_div
 
-
-
-
-        print("max_closeness", max_closeness)
         self.metric_help_iterative[step]["best_metric"] = max_closeness
-        print("threshold_tolerance", self.metric_help_iterative[step]["threshold_tolerance"])
-        lower_tolerance = max_closeness + self.metric_help_iterative[step]["threshold_tolerance"]
+        # for relative application of threshold
+        #lower_tolerance = max_closeness + self.metric_help_iterative[step]["threshold_tolerance"]
+        lower_tolerance = self.metric_help_iterative[step]["threshold_tolerance"]
         self.metric_help_iterative[step]["tolerance"] = lower_tolerance
-        print("lower_tolerance", lower_tolerance)
 
-
-
+        # for relative application of threshold
+        # self.performed_step[step]["prediction"] = [goal for goal in goals_remaining
+                                                   # if self.performed_step[step][goal]["metric"] >= lower_tolerance]
 
         self.performed_step[step]["prediction"] = [goal for goal in goals_remaining
-                                                   if self.performed_step[step][goal]["metric"] >= lower_tolerance]
+                                                   if self.performed_step[step][goal]["metric"] >= lower_tolerance
+                                                   or self.performed_step[step][goal]["metric"] == max_closeness]
 
         goal_prob_nrmlsd = self.distances_to_probabilities_dict(step)
         for key in goal_prob_nrmlsd:
@@ -709,9 +686,9 @@ class GRAQL:
 
 
 if __name__ == "__main__":
-    model_no = 7
-    hash_code_model = '0af2422953491e235481a3b7e0a10b74afc640356989b94d627359d1'
-    path_logs = f'E:/Interaction logs/model_{model_no}/logs_model_{model_no}/'
+    hash_code_model = os.getenv('HASH_CODE_MODEL')
+    config = os.getenv('CONFIG')
+    path_logs = os.getenv('PATH_LOGS').replace("number", os.getenv("MODEL_NO"))
     log_folders = os.listdir(path_logs)
     list_files_obs = []
     for folder in log_folders:
@@ -722,19 +699,19 @@ if __name__ == "__main__":
     list_files_obs.sort()
     observations = [pddl_observations(file) for file in list_files_obs]
 
-    goals = {1: {"keep_goal_1_reward": False, "rl_models_dict": "from_goal_5_model_7_no_hl__04-08-24 23-08-06.keras"},
+    goals = {1: {"keep_goal_1_reward": False, "rl_models_dict": os.getenv("RL_GOAL_1")},
              # 1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__04-08-24 23-07-13.keras"},
              # 1: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__04-08-24 23-07-13.keras"}
-             2: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__22-07-24 14-13-35.keras"},
-             3: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__06-08-24 09-29-21.keras"},
-             4: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__29-07-24 07-51-27.keras"},
-             5: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__04-08-24 23-08-06.keras"},
+             2: {"keep_goal_1_reward": False, "rl_models_dict": os.getenv("RL_GOAL_2")},
+             3: {"keep_goal_1_reward": True, "rl_models_dict": os.getenv("RL_GOAL_3")},
+             4: {"keep_goal_1_reward": True, "rl_models_dict": os.getenv("RL_GOAL_4")},
+             5: {"keep_goal_1_reward": True, "rl_models_dict": os.getenv("RL_GOAL_5")},
              # 6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 07-23-38.keras"},
-             6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 08-09-00.keras"},
+             6: {"keep_goal_1_reward": False, "rl_models_dict": os.getenv("RL_GOAL_6")},
              # 6: {"keep_goal_1_reward": False, "rl_models_dict": "model_7_no_hl__13-09-24 09-36-56.keras"},
              # 7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__14-08-24 22-29-26.keras"}
              # 7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__15-08-24 14-46-54.keras"}
-             7: {"keep_goal_1_reward": True, "rl_models_dict": "model_7_no_hl__17-08-24 16-01-31.keras"}
+             7: {"keep_goal_1_reward": True, "rl_models_dict": os.getenv("RL_GOAL_7")}
              }
 
     obs = observations[81]
@@ -746,7 +723,7 @@ if __name__ == "__main__":
     #----------
 
     # instantiate domain
-    model = 7
+    model = int(os.getenv("MODEL_NO"))
     if model > 8:
         add_actions = [{'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-4b', 'loc-infirmary-kim']},
                        {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-kim', 'loc-outdoors-4b']},
@@ -794,9 +771,9 @@ if __name__ == "__main__":
     else:
         add_actions = None
         cp = ["person_in_room"]
-    config = '495afca3d199dd8d66b44b1c5e414f225a19d42c9a540eabdcfec02e'
 
-    path_pddl = r"E:/best_domains/"
+
+    path_pddl = os.getenv("PATH_PDDL")
     domain = pddl_domain(path_pddl + f"model_{model}_{config}.pddl")
     #problem = pddl_problem(path_pddl + f"model_{model}_goal_1_crystal_island_problem.pddl")
     problem_list = [pddl_problem(path_pddl + f"model_{model}_goal_{goal}_crystal_island_problem.pddl")
@@ -824,7 +801,7 @@ if __name__ == "__main__":
             environment_list[-2].action_dict[drop_key]["effects"].replace("(increase (costs) 1.0)",
                                                                           "(increase (costs) 100.0)")
 
-    path_rl_model = "E:/finalised_rl_models/"
+    path_rl_model = os.getenv("PATH_RL_MODEL")
     rl_model_list = [load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
                      for goal in goals.keys()]
 
@@ -872,14 +849,7 @@ if __name__ == "__main__":
                   hash_code_action=config, observation_sequence=obs,
                   additional_reward_fluents=additional_reward_fluents)
     model.perform_solve_optimal(test_theoretical_adjustment=False)
-    #model.test_q_adjustment_optimal_plans()
+    # model.test_q_adjustment_optimal_plans()
 
-
-    #model.perform_solve_observed(metric="distance_to_goal", threshold=1.5)
-    #model.perform_solve_observed(metric="max_util", threshold=1.5)
-    model.perform_solve_observed(metric="kl_divergence", threshold=0.9)
-
-    x = model.q_summary[model.q_summary["goal"] == 'goal_6']
-    #[(model.env_obs.action_dict[k]["action_grounded"], k) for k in model.env_obs.action_dict.keys() if "ACTION-DROP_FOOD-MILK_LOC-OUTDOORS-NULL-E" in model.env_obs.action_dict[k]["action_grounded"]]
-
-    #x = model.q_summary[model.q_summary["goal"] == 'goal_1']
+    model.perform_solve_observed(metric=os.getenv("METRIC"), threshold=float(os.getenv("THRESHOLD")))
+    # x = model.q_summary[model.q_summary["goal"] == 'goal_6']
