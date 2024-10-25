@@ -5,6 +5,7 @@ import copy
 import numpy as np
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+
 from rl_planner import RlPlanner, load_model
 import os
 import datetime as dt
@@ -686,6 +687,7 @@ class GRAQL:
 
 
 if __name__ == "__main__":
+    run_time = time.time()
     hash_code_model = os.getenv('HASH_CODE_MODEL')
     config = os.getenv('CONFIG')
     path_logs = os.getenv('PATH_LOGS').replace("number", os.getenv("MODEL_NO"))
@@ -714,160 +716,180 @@ if __name__ == "__main__":
              7: {"keep_goal_1_reward": True, "rl_models_dict": os.getenv("RL_GOAL_7")}
              }
 
-    obs = observations[81]
-    # obs = random.choice(observations)
-    print(obs.observation_path)
-    solution = obs.name.split("_")[-1].lower()
-    print("Solution:", solution)
-    #----------
-    #obs = pddl_observations(r"E:\Interaction logs\Test-Session/1_log_Salmonellosis.csv")
-    #----------
+    # obs = observations[81]
+    for obs in observations[:]:
+        print("--------------------------------")
+        print(obs.observation_path)
+        print("--------------------------------")
+        solution = obs.name.split("_")[-1].lower().replace(".","")
+        print("Solution:", solution)
+        #----------
+        #obs = pddl_observations(r"E:\Interaction logs\Test-Session/1_log_Salmonellosis.csv")
+        #----------
 
-    # instantiate domain
-    model = int(os.getenv("MODEL_NO"))
-    if model > 8:
-        add_actions = [{'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-4b', 'loc-infirmary-kim']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-kim', 'loc-outdoors-4b']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-infirmary-medicine', 'loc-infirmary-bathroom']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-infirmary-bathroom', 'loc-infirmary-medicine']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-laboratory-front', 'loc-outdoors-null-b']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-null-b', 'loc-laboratory-front']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-laboratory-midright', 'loc-laboratory-library']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-laboratory-library', 'loc-laboratory-midright']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-dininghall-front', 'loc-outdoors-null-e']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-null-e', 'loc-dininghall-front']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-null-d']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-null-d', 'loc-dininghall-back-souptable']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-2b']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-2b', 'loc-dininghall-back-souptable']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-livingquarters-hall', 'loc-outdoors-2a']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-2a', 'loc-livingquarters-hall']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-livingquarters-hall', 'loc-outdoors-null-g']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-null-g', 'loc-livingquarters-hall']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-brycesquarters-hall', 'loc-outdoors-null-f']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-outdoors-null-f', 'loc-brycesquarters-hall']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-brycesquarters-hall', 'loc-brycesquarters-bedroom']},
-                       {'action_ungrounded': 'ACTION-MOVETOLOC',
-                        'instances': ['loc-brycesquarters-bedroom', 'loc-brycesquarters-hall']}]
-        cp = ["person_in_room", "neighboring"]
-    else:
-        add_actions = None
-        cp = ["person_in_room"]
+        # instantiate domain
+        model = int(os.getenv("MODEL_NO"))
+        if model > 8:
+            add_actions = [{'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-outdoors-4b', 'loc-infirmary-kim']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC', 'instances': ['loc-infirmary-kim', 'loc-outdoors-4b']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-infirmary-medicine', 'loc-infirmary-bathroom']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-infirmary-bathroom', 'loc-infirmary-medicine']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-laboratory-front', 'loc-outdoors-null-b']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-null-b', 'loc-laboratory-front']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-laboratory-midright', 'loc-laboratory-library']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-laboratory-library', 'loc-laboratory-midright']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-dininghall-front', 'loc-outdoors-null-e']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-null-e', 'loc-dininghall-front']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-null-d']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-null-d', 'loc-dininghall-back-souptable']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-dininghall-back-souptable', 'loc-outdoors-2b']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-2b', 'loc-dininghall-back-souptable']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-livingquarters-hall', 'loc-outdoors-2a']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-2a', 'loc-livingquarters-hall']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-livingquarters-hall', 'loc-outdoors-null-g']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-null-g', 'loc-livingquarters-hall']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-brycesquarters-hall', 'loc-outdoors-null-f']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-outdoors-null-f', 'loc-brycesquarters-hall']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-brycesquarters-hall', 'loc-brycesquarters-bedroom']},
+                           {'action_ungrounded': 'ACTION-MOVETOLOC',
+                            'instances': ['loc-brycesquarters-bedroom', 'loc-brycesquarters-hall']}]
+            cp = ["person_in_room", "neighboring"]
+        else:
+            add_actions = None
+            cp = ["person_in_room"]
 
 
-    path_pddl = os.getenv("PATH_PDDL")
-    if os.getenv("OS") == "WIN":
-        d_path = path_pddl + f"model_{model}_{config}.pddl"
-    elif os.getenv("OS") == "UBUNTU":
-        d_path = path_pddl + f"model_{model}_{config}_{solution}.pddl"
-    print("Domain:", d_path)
-    domain = pddl_domain(d_path)
+        path_pddl = os.getenv("PATH_PDDL")
+        if os.getenv("OS") == "WIN":
+            d_path = path_pddl + f"model_{model}_{config}.pddl"
+        elif os.getenv("OS") == "UBUNTU":
+            d_path = path_pddl + f"model_{model}_{config}_{solution}.pddl"
+        print("Domain:", d_path)
+        domain = pddl_domain(d_path)
 
-    #problem = pddl_problem(path_pddl + f"model_{model}_goal_1_crystal_island_problem.pddl")
-    problem_list = [pddl_problem(path_pddl + f"model_{model}_goal_{goal}_crystal_island_problem.pddl")
-                    for goal in goals.keys()]
+        #problem = pddl_problem(path_pddl + f"model_{model}_goal_1_crystal_island_problem.pddl")
+        problem_list = [pddl_problem(path_pddl + f"model_{model}_goal_{goal}_crystal_island_problem.pddl")
+                        for goal in goals.keys()]
 
-    environment_list = [GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions).make_env()
-                        for problem in problem_list]
+        environment_list = [GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions).make_env()
+                            for problem in problem_list]
 
-    #env = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions).make_env()
+        #env = GymCreator(domain, problem, constant_predicates=cp, add_actions=add_actions).make_env()
 
-    g = 0
-    for goal in goals.keys():
-        if goals[goal]["keep_goal_1_reward"]:
-            environment_list[g].set_final_reward(20)
-            environment_list[g].set_additional_reward_fluents("(achieved_goal_1)", 10)
-        g += 1
-
-    environment_list[-2].set_final_reward(20)
-    environment_list[-2].set_additional_reward_fluents("(wearable_picked food-milk)", 10)
-    drop_keys = [k for k in environment_list[-2].action_dict.keys()
-                 if "ACTION-DROP_FOOD-MILK" in environment_list[-2].action_dict[k]["action_grounded"]
-                 and "LOC-LABORATORY-FRONT" not in environment_list[-2].action_dict[k]["action_grounded"]]
-    for drop_key in drop_keys:
-        environment_list[-2].action_dict[drop_key]["effects"] = \
-            environment_list[-2].action_dict[drop_key]["effects"].replace("(increase (costs) 1.0)",
-                                                                          "(increase (costs) 100.0)")
-
-    path_rl_model = os.getenv("PATH_RL_MODEL")
-
-    if os.getenv("OS") == "UBUNTU":
-        rl_model_list = []
+        g = 0
         for goal in goals.keys():
-            if goal == 7:
-                rl_g_seven = path_rl_model + f"goal_{goal}/" + solution + "_" + goals[goal]["rl_models_dict"]
-                print("GOAL 7 - RL_MODEL:", rl_g_seven)
-                rl_model_list.append(load_model(rl_g_seven))
-            else:
-                rl_model_list.append(load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"]))
-    elif os.getenv("OS") == "WIN":
-        rl_model_list = [load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
-                         for goal in goals.keys()]
+            if goals[goal]["keep_goal_1_reward"]:
+                environment_list[g].set_final_reward(20)
+                environment_list[g].set_additional_reward_fluents("(achieved_goal_1)", 10)
+            g += 1
 
-    talk_to_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
-                         'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
-                         'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
-                         'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
-                         'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
-                         'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
-                         'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
-                         'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
-                         'ACTION-HAND-FINAL-WORKSHEET', 'ACTION-PICKUP',
-                         'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
-                         'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
+        environment_list[-2].set_final_reward(20)
+        environment_list[-2].set_additional_reward_fluents("(wearable_picked food-milk)", 10)
+        drop_keys = [k for k in environment_list[-2].action_dict.keys()
+                     if "ACTION-DROP_FOOD-MILK" in environment_list[-2].action_dict[k]["action_grounded"]
+                     and "LOC-LABORATORY-FRONT" not in environment_list[-2].action_dict[k]["action_grounded"]]
+        for drop_key in drop_keys:
+            environment_list[-2].action_dict[drop_key]["effects"] = \
+                environment_list[-2].action_dict[drop_key]["effects"].replace("(increase (costs) 1.0)",
+                                                                              "(increase (costs) 100.0)")
 
-    goal_six_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
-                          'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
-                          'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
-                          'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
-                          'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
-                          'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
-                          'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
-                          'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
-                          'ACTION-HAND-FINAL-WORKSHEET', "ACTION-TALK-TO"]
+        path_rl_model = os.getenv("PATH_RL_MODEL")
 
-    goal_seven_redundant = ['ACTION-PICKUP', 'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
-                            'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
+        if os.getenv("OS") == "UBUNTU":
+            rl_model_list = []
+            for goal in goals.keys():
+                if goal == 7:
+                    rl_g_seven = path_rl_model + f"goal_{goal}/" + solution + "_" + goals[goal]["rl_models_dict"]
+                    print("GOAL 7 - RL_MODEL:", rl_g_seven)
+                    rl_model_list.append(load_model(rl_g_seven))
+                else:
+                    rl_model_list.append(load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"]))
+        elif os.getenv("OS") == "WIN":
+            rl_model_list = [load_model(path_rl_model + f"goal_{goal}/" + goals[goal]["rl_models_dict"])
+                             for goal in goals.keys()]
 
-    redundant_actions_dict = {"goal_1": talk_to_redundant,
-                              "goal_2": talk_to_redundant,
-                              "goal_3": talk_to_redundant,
-                              "goal_4": talk_to_redundant,
-                              "goal_5": talk_to_redundant,
-                              "goal_6": goal_six_redundant,
-                              "goal_7": goal_seven_redundant}
+        talk_to_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
+                             'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
+                             'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
+                             'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
+                             'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
+                             'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
+                             'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
+                             'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
+                             'ACTION-HAND-FINAL-WORKSHEET', 'ACTION-PICKUP',
+                             'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
+                             'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
 
-    additional_reward_fluents = {"goal_3": {"fluent" : "achieved_goal_1", "additional": 9, "target": 19},
-                                 "goal_4": {"fluent": "achieved_goal_1", "additional": 9, "target": 19},
-                                 "goal_5": {"fluent": "achieved_goal_1", "additional": 9, "target": 19},
-                                 "goal_6": {"fluent": "wearable_picked food-milk", "additional": 9, "target": 19},
-                                 "goal_7": {"fluent": "achieved_goal_1", "additional": 9, "target": 19}}
+        goal_six_redundant = ['ACTION-CHANGE-FINAL-REPORT-FINALINFECTIONTYPE',
+                              'ACTION-UNSELECT-FINAL-REPORT-FINALINFECTIONTYPE',
+                              'ACTION-CHANGE-FINAL-REPORT-FINALDIAGNOSIS',
+                              'ACTION-UNSELECT-FINAL-REPORT-FINALDIAGNOSIS',
+                              'ACTION-CHANGE-FINAL-REPORT-FINALSOURCE',
+                              'ACTION-UNSELECT-FINAL-REPORT-FINALSOURCE',
+                              'ACTION-CHANGE-FINAL-REPORT-FINALTREATMENT',
+                              'ACTION-UNSELECT-FINAL-REPORT-FINALTREATMENT',
+                              'ACTION-HAND-FINAL-WORKSHEET', "ACTION-TALK-TO"]
+
+        goal_seven_redundant = ['ACTION-PICKUP', 'ACTION-DROP', 'ACTION-STOWITEM', 'ACTION-RETRIEVEITEM',
+                                'ACTION-CHOOSE-TESTCOMPUTER', 'ACTION-QUIZ']
+
+        redundant_actions_dict = {"goal_1": talk_to_redundant,
+                                  "goal_2": talk_to_redundant,
+                                  "goal_3": talk_to_redundant,
+                                  "goal_4": talk_to_redundant,
+                                  "goal_5": talk_to_redundant,
+                                  "goal_6": goal_six_redundant,
+                                  "goal_7": goal_seven_redundant}
+
+        additional_reward_fluents = {"goal_3": {"fluent" : "achieved_goal_1", "additional": 9, "target": 19},
+                                     "goal_4": {"fluent": "achieved_goal_1", "additional": 9, "target": 19},
+                                     "goal_5": {"fluent": "achieved_goal_1", "additional": 9, "target": 19},
+                                     "goal_6": {"fluent": "wearable_picked food-milk", "additional": 9, "target": 19},
+                                     "goal_7": {"fluent": "achieved_goal_1", "additional": 9, "target": 19}}
 
 
-    model = GRAQL(env_list=environment_list, rl_model_list=rl_model_list, hash_code_model=hash_code_model,
-                  hash_code_action=config, observation_sequence=obs,
-                  additional_reward_fluents=additional_reward_fluents)
-    model.perform_solve_optimal(test_theoretical_adjustment=False)
-    # model.test_q_adjustment_optimal_plans()
+        model = GRAQL(env_list=environment_list, rl_model_list=rl_model_list, hash_code_model=hash_code_model,
+                      hash_code_action=config, observation_sequence=obs,
+                      additional_reward_fluents=additional_reward_fluents)
+        model.perform_solve_optimal(test_theoretical_adjustment=False)
+        # model.test_q_adjustment_optimal_plans()
 
-    model.perform_solve_observed(metric=os.getenv("METRIC"), threshold=float(os.getenv("THRESHOLD")))
-    # x = model.q_summary[model.q_summary["goal"] == 'goal_6']
+        model.perform_solve_observed(metric=os.getenv("METRIC"), threshold=float(os.getenv("THRESHOLD")))
+        if os.getenv("OS") == 'UBUNTU':
+            save_folder = os.getenv("SAVE_PATH") + model.metric.upper()
+            if not os.path.exists(save_folder):
+                os.mkdir(save_folder)
+
+            if not os.path.exists(save_folder+"/model_grid_observed"):
+                os.mkdir(save_folder+"/model_grid_observed")
+            if not os.path.exists(save_folder + "/q_summary"):
+                os.mkdir(save_folder + "/q_summary")
+            if not os.path.exists(save_folder + "/threshold_control"):
+                os.mkdir(save_folder + "/threshold_control")
+
+            file_suffix = f"{model.metric}_{model.threshold}_{model.observation.observation_path.split('/')[-2]}_{model.observation.name}"
+
+            model.summary.to_csv(f"{save_folder+'/model_grid_observed'}/model_grid_observed_{file_suffix}.csv", index=False)
+            model.q_summary.to_csv(f"{save_folder + '/q_summary'}/q_summary_{file_suffix}.csv", index=False)
+            model.threshold_control_table.to_csv(f"{save_folder + '/threshold_control'}/threshold_control_{file_suffix}.csv", index=False)
+
+    print("RUNTIME:", round((time.time() - run_time)/60, 2), "mins")
